@@ -1,5 +1,5 @@
 # Система видео-аналитики для контроля розничных точек  
-(Только для Camhi камер, Windows 64b >= 10, для ПК с CV RAM >= 8Gb)
+*Только для Camhi камер, Windows 64b >= 10, для ПК с CV RAM >= 8Gb*
 ---
 
 ### Автоматически с помощью Computer Vision:  
@@ -29,7 +29,7 @@
 - Можно использовать обычные офисные компьютеры
 
 
-[Комплект программ в файловой структуре для компьютера с Computer Vision (708 Mb)]( https://ipwificam.ru/wp-content/uploads/downloads/12_VA_PC_CV.rar)
+[Комплект программ в файловой структуре для компьютера с Computer Vision (708 Mb)]( https://ipwificam.ru/wp-content/uploads/downloads/12_VA_PC_CV.rar)  
 [Комплект программ для компьютера-клиента системы (166Mbyte)]( https://ipwificam.ru/wp-content/uploads/downloads/13_VA_PC_client.rar)
 
 
