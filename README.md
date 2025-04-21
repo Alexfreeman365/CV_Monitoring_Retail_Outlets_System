@@ -33,4 +33,4 @@ Camhi камеры | Windows 64b >= 10 | для ПК с CV RAM >= 8Gb
 [Комплект программ для компьютера-клиента системы (166 Mbyte)]( https://ipwificam.ru/wp-content/uploads/downloads/13_VA_PC_client.rar)
 
 
-**По всем вопросам пишите или звоните мне на +7 (917) 115 0 917 (WhatsApp, Telegram)**
+**По всем вопросам пишите мне в [Telegram](https://t.me/AlekseySergeychuk)**
