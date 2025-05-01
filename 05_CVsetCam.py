@@ -10,6 +10,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
+from funcs_initializer_camconfig_getcamframe import *
+
 
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
@@ -1154,7 +1156,7 @@ class ShowZoneWindow(QtWidgets.QWidget):
         lay = QtWidgets.QVBoxLayout(self)
         lay.addWidget(self.image)
 
-        camconfig = self.load_camconfig()
+        camconfig = load_camconfig()
         imgs_path = self.main_window.ip_cam_data_paths_dict[self.cam_name]
         if (len(date_start) & len(date_end)) == 0:
             last_day = os.listdir(imgs_path)[-1]
@@ -1181,13 +1183,6 @@ class ShowZoneWindow(QtWidgets.QWidget):
         self.setMinimumSize(int(self.pixmap_small.width()), int(self.pixmap_small.height()))
 
         self.setCoordsToEditLines()
-
-    def load_camconfig(self):
-        camconfig = []
-        if os.path.exists(os.path.join(os.getcwd(), 'db', 'camconfig.csv')):
-            camconfig = pd.read_csv(os.path.join(os.getcwd(), 'db', 'camconfig.csv'))
-            camconfig = camconfig.to_dict(orient='records')
-        return camconfig
 
     def get_coords_from_text(self, coords):
         if len(coords.split(',')) == 4:
@@ -1320,17 +1315,6 @@ class SetZoneWindow(QtWidgets.QWidget):
             'register': self.main_window.le_register_zone
         }
 
-    def load_camconfig(self):
-        camconfig = []
-        if os.path.exists(os.path.join(os.getcwd(), 'db', 'camconfig.csv')):
-            camconfig = pd.read_csv(os.path.join(os.getcwd(), 'db', 'camconfig.csv'))
-            camconfig = camconfig.to_dict(orient='records')
-        return camconfig
-
-    def save_camconfig(self, camconfig):
-        camconfig = pd.DataFrame(camconfig)
-        camconfig.to_csv(os.path.join(os.getcwd(), 'db', 'camconfig.csv'), index=False)
-
     def get_coords_from_text(self, coords):
         if len(coords.split(',')) == 4:
             # Single zone coords
@@ -1421,17 +1405,6 @@ class SaveRecalculateThread(QThread):
         self.direction = direction
 
     def run(self):
-        def load_camconfig():
-            camconfig = []
-            if os.path.exists(os.path.join(os.getcwd(), 'db', 'camconfig.csv')):
-                camconfig = pd.read_csv(os.path.join(os.getcwd(), 'db', 'camconfig.csv'))
-                camconfig = camconfig.to_dict(orient='records')
-            return camconfig
-
-        def save_camconfig(camconfig):
-            camconfig = pd.DataFrame(camconfig)
-            camconfig.to_csv(os.path.join(os.getcwd(), 'db', 'camconfig.csv'), index=False)
-
         def change_camconfig_shape_zone(cam_name, shape_zone_coords):
             camconfig = load_camconfig()
             [cam_set.update(shape_zone=shape_zone_coords) for cam_set in camconfig if cam_set['cam_name'] == cam_name]
@@ -1813,7 +1786,7 @@ class UI(QDialog):
         self.ui.setupUi(self)
 
         # If you use UI file, activate it
-        # uic.loadUi(os.path.join(os.getcwd(), 'CVsetCam_v2_GUI.ui'), self)
+        # uic.loadUi(os.path.join(os.getcwd(), '05_CVsetCam_gui.ui'), self)
 
         self.setWindowFlags(
             QtCore.Qt.Window | QtCore.Qt.CustomizeWindowHint |
@@ -1886,7 +1859,7 @@ class UI(QDialog):
         self.pb_wishes.clicked.connect(self.button_wishes_clicked)
         self.pb_thanks.clicked.connect(self.button_thanks_clicked)
 
-        self.ip_cam_data_paths_dict, self.cam_names = self.initializer()
+        self.ip_cam_data_paths_dict, self.cam_names = initializer()
         self.disable_enable_ui(False)
         self.show()
 
@@ -1927,76 +1900,10 @@ class UI(QDialog):
         self.ShowCams = ShowCams(main_window=self)
         self.ShowCams.show()
 
-    def load_camconfig(self):
-        camconfig = []
-        if os.path.exists(os.path.join(os.getcwd(), 'db', 'camconfig.csv')):
-            camconfig = pd.read_csv(os.path.join(os.getcwd(), 'db', 'camconfig.csv'))
-            camconfig = camconfig.to_dict(orient='records')
-        return camconfig
-
-    def save_camconfig(self, camconfig):
-        camconfig = pd.DataFrame(camconfig)
-        camconfig.to_csv(os.path.join(os.getcwd(), 'db', 'camconfig.csv'), index=False)
-
-    def get_cam_frame(self, cam_name, ip_cam_data_paths_dict):
-        first_day = os.listdir(ip_cam_data_paths_dict[cam_name])[0]
-        first_image_name = os.listdir(os.path.join(ip_cam_data_paths_dict[cam_name], first_day))[0]
-        img_path = os.path.join(ip_cam_data_paths_dict[cam_name], first_day, first_image_name)
-        pixmap = QPixmap(img_path)
-        frame = 0, pixmap.height(), 0, pixmap.width()
-        return frame
-
-    def initializer(self):
-        def data_condition(item):
-            return (len(str(item).split('_')) > 1) & (str(item).split('_')[-1] in ['images', 'photos'])
-
-        media_path = os.path.join(os.getcwd(), 'cams_media')
-        ip_cam_data_folders = [item for item in os.listdir(media_path) if data_condition(item)]
-        ip_cam_data_folders = sorted(ip_cam_data_folders, reverse=True)
-        ip_cam_data_paths = [os.path.join(media_path, item) for item in ip_cam_data_folders]
-        cam_names = ['_'.join(str(item).split('_')[:-1]) for item in ip_cam_data_folders]
-        ip_cam_data_paths_dict = dict(zip(cam_names, ip_cam_data_paths))
-
-        if os.path.exists(os.path.join(os.getcwd(), 'db')):
-            pass
-        else:
-            os.mkdir(os.path.join(os.getcwd(), 'db'))
-
-        if os.path.exists(os.path.join(os.getcwd(), 'db', 'camconfig.csv')):
-            camconfig = self.load_camconfig()
-            for cam_name in cam_names:
-                frame = self.get_cam_frame(cam_name, ip_cam_data_paths_dict)
-                if cam_name not in [cam_set['cam_name'] for cam_set in camconfig]:
-                    camconfig.append({
-                        'cam_name': cam_name,
-                        'shape_zone': frame,
-                        'face_zone': (round(frame[1] * 0.65), frame[1], frame[2], frame[3]),
-                        'frame': frame,
-                        'work_hours': (10, 21),
-                        'vis_count_alg': (2, 2)
-                    })
-            camconfig = [cam_set for cam_set in camconfig if cam_set['cam_name'] in cam_names]
-            self.save_camconfig(camconfig)
-
-        else:
-            camconfig = []
-            for cam_name in cam_names:
-                frame = self.get_cam_frame(cam_name, ip_cam_data_paths_dict)
-                camconfig.append({
-                    'cam_name': cam_name,
-                    'shape_zone': frame,
-                    'face_zone': (round(frame[1] * 0.65), frame[1], frame[2], frame[3]),
-                    'frame': frame,
-                    'work_hours': (10, 21),
-                    'vis_count_alg': (2, 2)
-                })
-            self.save_camconfig(camconfig)
-        return ip_cam_data_paths_dict, cam_names
-
     def pb_show_camconfig_clicked(self):
         try:
             cam_name = self.le_cam_name.text()
-            camconfig = self.load_camconfig()
+            camconfig = load_camconfig()
             work_hours = [cam_set['work_hours'] for cam_set in camconfig if cam_set['cam_name'] == cam_name][0]
             start_hour = work_hours.split(',')[0][1:]
             end_hour = work_hours.split(',')[1][1:-1]
@@ -2014,9 +1921,9 @@ class UI(QDialog):
             end_hour = self.le_hour_end.text()
             if (len(start_hour) & len(end_hour)) != 0:
                 work_hours = int(start_hour), int(end_hour)
-                camconfig = self.load_camconfig()
+                camconfig = load_camconfig()
                 [cam_set.update(work_hours=work_hours) for cam_set in camconfig if cam_set['cam_name'] == cam_name]
-                self.save_camconfig(camconfig)
+                save_camconfig(camconfig)
                 self.label_wishes_thanks.setText('')
                 self.label_out.setText(self.text_saved_successfully)
         except:
