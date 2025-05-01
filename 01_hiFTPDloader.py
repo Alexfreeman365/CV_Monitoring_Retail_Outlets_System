@@ -2435,9 +2435,6 @@ class GetDays(QThread):
         self.text_getdays_problem = self.main_window.text_getdays_problem
 
     def run(self):
-        # Function for connecting to the camera and parsing the SD card
-        # You can see detailed information at the beginning of the code in the first working thread.
-
         def get_days_dd():
             ftp = ftplib.FTP(self.ftp_host)
             ftp.login(self.ftp_user, self.ftp_pas)
