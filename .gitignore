@@ -1,0 +1,11 @@
+.idea/
+.ipynb_checkpoints/
+__pycache__/
+cams_media/
+db/
+db_backups/
+temp/
+venv/
+
+*.exe
+*.ipynb
