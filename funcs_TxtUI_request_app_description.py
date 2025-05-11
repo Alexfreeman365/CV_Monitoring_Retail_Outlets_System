@@ -1,5 +1,7 @@
 import os
 import sys
+import csv
+from datetime import datetime
 
 
 def txt_notification(app_name, path, msg):
@@ -33,3 +35,13 @@ def request_app_description(app_name, path, request, description):
         sys.exit(0)
     return data
 
+
+def log_event(cwd_path, name, message):
+    current_time = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+    log_file_name = '11_FTPDataAlert_event_log.csv'
+    log_file_path = os.path.join(cwd_path, log_file_name)
+    with open(log_file_path, mode='a', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        if not os.path.exists(log_file_path):
+            writer.writerow(['timestamp', 'name', 'message'])
+        writer.writerow([current_time, name, message])

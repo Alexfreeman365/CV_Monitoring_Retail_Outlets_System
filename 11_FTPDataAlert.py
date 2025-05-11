@@ -1,7 +1,5 @@
-from datetime import datetime
 import telebot
 import time
-import csv
 import ftplib
 
 from funcs_initializer_camconfig_getcamframe import load_camconfig
@@ -85,17 +83,6 @@ def send_message(chat_id=None, message=None):
                 bot.send_message(chat_id, message)
 
 
-def log_error(error_message):
-    current_time = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-    log_file = '11_FTPDataAlert_error_log.csv'
-    file_exists = os.path.isfile(log_file)
-    with open(log_file, mode='a', newline='') as file:
-        writer = csv.writer(file)
-        if not file_exists:
-            writer.writerow(['Timestamp', 'Error Message'])
-        writer.writerow([current_time, error_message])
-
-
 DESCRIPTION = (
         'После успешного запуска программы создайте для нее ярлык и перенесите его в папку автозагрузки Windows.\n'
         '\n'
@@ -134,11 +121,12 @@ if __name__ == '__main__':
     ftp_host, ftp_user, ftp_pas = get_ftp_host_user_pas(cwd_path)
 
     request = f"Введите данные:\n" \
-              f"bot_token->:\nchat_id->:\n{'-' * 30}"
-    tg_bot_creds = request_app_description('11_FTPDataAlert', cwd_path, request, DESCRIPTION)
-    bot_token, chat_id = tg_bot_creds
+              f"bot_token->:\nchat_id->:\nЖурнал событий->: Нет\n{'-' * 30}"
+    data = request_app_description('11_FTPDataAlert', cwd_path, request, DESCRIPTION)
+    bot_token, chat_id, ledger_msg = data
     chat_id = int(chat_id)
     bot = telebot.TeleBot(bot_token)
+    ledger_flag = ledger_msg == 'Да'
 
     no_connection = {}
     total_sended = []
@@ -160,7 +148,7 @@ if __name__ == '__main__':
             sorted_hours = sorted(all_work_hours)
             min_hour, max_hour = sorted_hours[0], sorted_hours[-1]
             min_work_hour_dt = cur_dt.replace(hour=min_hour, minute=0, second=0)
-            max_work_hour_dt = cur_dt.replace(hour=max_hour, minute=5, second=0)
+            max_work_hour_dt = cur_dt.replace(hour=max_hour, minute=10, second=0)
 
             if min_work_hour_dt <= cur_dt <= max_work_hour_dt:
                 for cam_name in sorted(cam_work_hours):
@@ -177,16 +165,21 @@ if __name__ == '__main__':
                                 no_connection[cam_name] = last_img_dt
                                 msg = f'{cam_name.upper()} XXX Не в сети больше трех минут ¯\_(ツ)_/¯'
                                 send_message(chat_id, msg)
+                                if ledger_flag:
+                                    log_event(cwd_path, cam_name, 'disconnected over 3 min')
                             if cam_name in no_connection and delta < 60:  # 60
                                 lost_delta = (last_img_dt - no_connection[cam_name]).total_seconds()
                                 del no_connection[cam_name]
                                 lost_time = seconds_to_hhmmss(int(lost_delta))
                                 msg = f'{cam_name.upper()} Ok - В сети! - {lost_time}'
                                 send_message(chat_id, msg)
+                                if ledger_flag:
+                                    log_event(cwd_path, cam_name, f'connected, lost {lost_time}')
                             if cam_name in total_sended:
                                 total_sended.remove(cam_name)
 
-                        elif end_dt < cur_dt and cam_name not in total_sended:
+                        elif (end_dt.replace(hour=end_hour, minute=3, second=0)
+                              < cur_dt and cam_name not in total_sended):
                             last_img_dt = datetime.strptime(get_last_frame(cam_name)[1:13], '%y%m%d%H%M%S')
                             if last_img_dt.day == cur_dt.day:
                                 estimated_num_frames = (end_hour - start_hour) * 3600 // 45
@@ -197,9 +190,9 @@ if __name__ == '__main__':
                                 total_sended.append(cam_name)
                 ftp.quit()
         except Exception as error:
-            log_error(error)
+            if ledger_flag:
+                log_event(cwd_path, 'error', type(error).__name__)
             time.sleep(5)
-            pass
         # print(no_connection)
         time.sleep(45)  # 45
 
