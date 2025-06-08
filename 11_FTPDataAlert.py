@@ -65,7 +65,7 @@ def seconds_to_hhmmss(total_seconds):
     hours = total_seconds // 3600
     minutes = (total_seconds % 3600) // 60
     seconds = total_seconds % 60
-    return f"{hours:02}:{minutes:02}:{seconds:02}"
+    return f'{hours:02}:{minutes:02}:{seconds:02}'
 
 
 def send_message(chat_id=None, message=None):
@@ -111,7 +111,6 @@ DESCRIPTION = (
 
 if __name__ == '__main__':
     # cwd_path = 'L:\Active_pjs\RG\cams_media'
-    # cwd_path = r'D:\07_Development\Pjs\CV_Monitoring_Retail_Outlets_System\cams_media'
     cwd_path = os.getcwd()
     parent_dir = os.path.dirname(cwd_path)
 
@@ -174,7 +173,7 @@ if __name__ == '__main__':
                                 msg = f'{cam_name.upper()} Ok - В сети! - {lost_time}'
                                 send_message(chat_id, msg)
                                 if ledger_flag:
-                                    log_event(cwd_path, cam_name, f'connected, lost {lost_time}')
+                                    log_event(cwd_path, cam_name, f'connected >>> lost {lost_time}')
                             if cam_name in total_sended:
                                 total_sended.remove(cam_name)
 
@@ -184,10 +183,12 @@ if __name__ == '__main__':
                             if last_img_dt.day == cur_dt.day:
                                 estimated_num_frames = (end_hour - start_hour) * 3600 // 45
                                 total_not_empty_frames = last_day_total(cam_name)
-                                msg = f'{cam_name.upper()} Общее количество кадров за день: ' \
+                                msg = f'{cam_name.upper()} Общее кол-во кадров за день: ' \
                                       f'из {estimated_num_frames} в наличии {total_not_empty_frames}'
                                 send_message(chat_id, msg)
                                 total_sended.append(cam_name)
+                            else:
+                                total_sended.clear()
                 ftp.quit()
         except Exception as error:
             if ledger_flag:
