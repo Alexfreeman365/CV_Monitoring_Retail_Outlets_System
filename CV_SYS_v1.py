@@ -1,4 +1,3 @@
-# Version 1.2
 from keras.models import load_model
 import cv2
 import numpy as np

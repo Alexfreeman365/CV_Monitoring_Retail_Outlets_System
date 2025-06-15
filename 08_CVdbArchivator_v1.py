@@ -1034,7 +1034,7 @@ class Ui_Dialog(object):
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
-        Dialog.setWindowTitle(_translate("Dialog", "CVdbArchivator_v1"))
+        Dialog.setWindowTitle(_translate("Dialog", "CVdbArchivator"))
         self.label_18.setText(_translate("Dialog", "Первый день раб. части (ггммдд)"))
         self.label_17.setText(_translate("Dialog", "Последний день:"))
         self.label_15.setText(_translate("Dialog", "Кол-во строк:"))

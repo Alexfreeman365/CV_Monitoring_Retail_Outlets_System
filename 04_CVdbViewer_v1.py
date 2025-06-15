@@ -793,7 +793,7 @@ class Ui_Dialog(object):
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
-        Dialog.setWindowTitle(_translate("Dialog", "CVdbViewer_v1"))
+        Dialog.setWindowTitle(_translate("Dialog", "CVdbViewer"))
         self.label_5.setText(_translate("Dialog", "Нижняя граница (вкл): [ 231121 -"))
         self.cb_at_cash_register.setText(_translate("Dialog", "только у кассы"))
         self.label_7.setText(_translate("Dialog", "Показать обнаруженных людей на фотографиях:"))

@@ -646,7 +646,7 @@ class Ui_Dialog(object):
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
-        Dialog.setWindowTitle(_translate("Dialog", "hiSampler_v1"))
+        Dialog.setWindowTitle(_translate("Dialog", "hiSampler"))
         self.label_5.setText(_translate("Dialog", "- Выберите через какое количество нужны фотографии"))
         self.pb_wishes.setText(_translate("Dialog", "Пожелания"))
         self.label_1.setText(_translate("Dialog", "Программа для выборки фотографий"))

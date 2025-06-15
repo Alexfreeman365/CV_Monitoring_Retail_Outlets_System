@@ -2352,7 +2352,7 @@ class Ui_Dialog_rus(object):
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
-        Dialog.setWindowTitle(_translate("Dialog", "hiFTPDloader_v2.2"))
+        Dialog.setWindowTitle(_translate("Dialog", "hiFTPDloader"))
         self.label_12.setText(_translate("Dialog", "до"))
         self.lineEdit_7.setText(_translate("Dialog", "00"))
         self.lineEdit_11.setText(_translate("Dialog", "00"))

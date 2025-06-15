@@ -20,7 +20,7 @@
    <bool>false</bool>
   </property>
   <property name="windowTitle">
-   <string>hiSampler_v1</string>
+   <string>hiSampler</string>
   </property>
   <property name="windowIcon">
    <iconset>

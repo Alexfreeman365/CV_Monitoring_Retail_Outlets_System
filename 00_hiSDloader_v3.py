@@ -1161,7 +1161,7 @@ class Ui_Dialog(object):
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
-        Dialog.setWindowTitle(_translate("Dialog", "hiSDloader_v3"))
+        Dialog.setWindowTitle(_translate("Dialog", "hiSDloader"))
         self.label_14.setText(_translate("Dialog", "Время от"))
         self.lineEdit_7.setText(_translate("Dialog", "00"))
         self.label_10.setText(_translate("Dialog", "Медиафайлы:"))
