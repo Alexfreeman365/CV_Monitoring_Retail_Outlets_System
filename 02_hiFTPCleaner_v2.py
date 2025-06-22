@@ -1,5 +1,5 @@
-import time
-from datetime import datetime, timedelta
+from time import sleep
+from datetime import timedelta
 
 from funcs_FTP_access_cams_media_structure import *
 from funcs_TxtUI_request_app_description import *
@@ -74,13 +74,22 @@ def delete_out_days(ftp_host, ftp_user, ftp_pas, cams_out_days_dict):
                 pass
 
 
+def check_delete(ftp_host, ftp_user, ftp_pas, cam_names, window):
+    cams_days_dict = get_cams_days_dict(ftp_host, ftp_user, ftp_pas, cam_names)
+    dt_last_day = get_dt_last_day(cams_days_dict)
+    dt_window_range = get_dt_window_range(dt_last_day, window)
+    cams_out_days_dict = get_cams_out_days_dict(cams_days_dict, dt_window_range)
+    if len(cams_out_days_dict) != 0:
+        delete_out_days(ftp_host, ftp_user, ftp_pas, cams_out_days_dict)
+
+
 DESCRIPTION = (
         'Поместите программу в папку с FTP загрузчиком hiFTPDloader, а точнее с его \n'
         'сохраненными настройками _hiFTPconfig.dat. После успешного запуска программы \n'
         'создайте для нее ярлык и перенесите его в папку автозагрузки Windows.\n'
         '\n'
         'hiFTPCleaner - программа для очистки FTP пространства, которое используют камеры.\n'
-        'Она через заданный промежуток проверяет наличие "старых" дней,\n' 
+        'Она через заданный промежуток и в 10:01 проверяет наличие "старых" дней,\n' 
         'которые не вошли в необходимый диапазон-окно, и удаляет их при наличии\n' 
         'для каждой камеры на FTP-сервере для предотвращения его переполнения.\n' 
         'Окно с необходимым количеством дней и промежуток времени для проверки задается\n'
@@ -129,18 +138,21 @@ if __name__ == '__main__':
                     cam_names = [usb_part+'/'+cam for cam in cam_names]
 
                 if len(cam_names) != 0:
-                    cams_days_dict = get_cams_days_dict(ftp_host, ftp_user, ftp_pas, cam_names)
-                    dt_last_day = get_dt_last_day(cams_days_dict)
-                    dt_window_range = get_dt_window_range(dt_last_day, window)
-                    cams_out_days_dict = get_cams_out_days_dict(cams_days_dict, dt_window_range)
-                    if len(cams_out_days_dict) != 0:
-                        delete_out_days(ftp_host, ftp_user, ftp_pas, cams_out_days_dict)
+                    check_delete(ftp_host, ftp_user, ftp_pas, cam_names, window)
+
+                cur_dt = datetime.today()
+                diff_to_10 = cur_dt.replace(hour=10, minute=0, second=0) - cur_dt
+                periods_to_10 = diff_to_10.seconds / (check_period * 3600)
+                if periods_to_10 < 1:
+                    sleep(diff_to_10.seconds + 60)
+                    check_delete(ftp_host, ftp_user, ftp_pas, cam_names, window)
+
             except Exception as error:
                 if ledger_flag:
                     log_event(cwd_path, 'error', type(error).__name__)
                 print(error)
 
-            time.sleep(check_period * 3600)
+            sleep(check_period * 3600)
             # break
     else:
         sys.exit(0)
