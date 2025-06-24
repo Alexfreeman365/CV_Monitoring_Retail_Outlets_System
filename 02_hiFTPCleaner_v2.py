@@ -104,6 +104,8 @@ if __name__ == '__main__':
     # cwd_path = 'L:\Active_pjs\RG\cams_media'
     # cwd_path = 'G:\hiFTPCleaner_beget'
     cwd_path = os.getcwd()
+    app_name = '02_hiFTPCleaner'
+
     request = f"Введите данные >>>\n" \
               f"Временное окно в днях->:\nПериод проверки в часах->:\nЖурнал событий->: Нет\n{'-' * 30}"
     data = request_app_description('02_hiFTPCleaner', cwd_path, request, DESCRIPTION)
@@ -117,7 +119,7 @@ if __name__ == '__main__':
         check_period = int(check_period)
     except Exception as error:
         if ledger_flag:
-            log_event(cwd_path, 'error', type(error).__name__)
+            log_event(cwd_path, app_name, 'error', type(error).__name__)
         print(error)
         sys.exit(0)
 
@@ -147,12 +149,13 @@ if __name__ == '__main__':
                     sleep(diff_to_10.seconds + 60)
                     check_delete(ftp_host, ftp_user, ftp_pas, cam_names, window)
 
+                sleep(check_period * 3600)
+                # break
             except Exception as error:
                 if ledger_flag:
-                    log_event(cwd_path, 'error', type(error).__name__)
+                    log_event(cwd_path, app_name, 'error', type(error).__name__)
                 print(error)
 
-            sleep(check_period * 3600)
-            # break
     else:
+        log_event(cwd_path, app_name, 'error', 'Окно для проверки дней пустое')
         sys.exit(0)
