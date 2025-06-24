@@ -36,9 +36,9 @@ def request_app_description(app_name, path, request, description):
     return data
 
 
-def log_event(cwd_path, name, message):
+def log_event(cwd_path, app_name, name, message):
     current_time = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-    log_file_name = '11_FTPDataAlert_event_log.csv'
+    log_file_name = f'{app_name}_event_log.csv'
     log_file_path = os.path.join(cwd_path, log_file_name)
     with open(log_file_path, mode='a', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)

@@ -113,6 +113,7 @@ if __name__ == '__main__':
     # cwd_path = 'L:\Active_pjs\RG\cams_media'
     cwd_path = os.getcwd()
     parent_dir = os.path.dirname(cwd_path)
+    app_name = '11_FTPDataAlert'    
 
     cam_work_hours = {d['cam_name']: d['work_hours']
                       for d in load_camconfig(parent_dir)}
@@ -165,7 +166,7 @@ if __name__ == '__main__':
                                 msg = f'{cam_name.upper()} XXX Не в сети больше трех минут ¯\_(ツ)_/¯'
                                 send_message(chat_id, msg)
                                 if ledger_flag:
-                                    log_event(cwd_path, cam_name, 'disconnected over 3 min')
+                                    log_event(cwd_path, app_name, cam_name, 'disconnected over 3 min')
                             if cam_name in no_connection and delta < 60:  # 60
                                 lost_delta = (last_img_dt - no_connection[cam_name]).total_seconds()
                                 del no_connection[cam_name]
@@ -173,7 +174,7 @@ if __name__ == '__main__':
                                 msg = f'{cam_name.upper()} Ok - В сети! - {lost_time}'
                                 send_message(chat_id, msg)
                                 if ledger_flag:
-                                    log_event(cwd_path, cam_name, f'connected >>> lost {lost_time}')
+                                    log_event(cwd_path, app_name, cam_name, f'connected >>> lost {lost_time}')
                             if cam_name in total_sended:
                                 total_sended.remove(cam_name)
 
@@ -192,7 +193,7 @@ if __name__ == '__main__':
                 ftp.quit()
         except Exception as error:
             if ledger_flag:
-                log_event(cwd_path, 'error', type(error).__name__)
+                log_event(cwd_path, app_name, 'error', type(error).__name__)
             time.sleep(5)
         # print(no_connection)
         time.sleep(45)  # 45
