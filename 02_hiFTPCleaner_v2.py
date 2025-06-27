@@ -155,6 +155,7 @@ if __name__ == '__main__':
                 if ledger_flag:
                     log_event(cwd_path, app_name, 'error', type(error).__name__)
                 print(error)
+                sleep(5)
 
     else:
         log_event(cwd_path, app_name, 'error', 'Окно для проверки дней пустое')
