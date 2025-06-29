@@ -73,3 +73,25 @@ def get_cam_frame(cam_name, ip_cam_data_paths_dict):
     return frame
 
 
+def dt_slice_shape_df(df_cam, dt_start, dt_end):
+    df = df_cam.copy()
+    dt_end_full = str(int(dt_end) + 1)
+    df['dt'] = df['uid8'].apply(lambda x: str(x)[:10])
+    return df[(df['dt'] >= dt_start) & (df['dt'] < dt_end_full)].iloc[:, 0:-1]
+
+
+def load_last_day_processed_imgs(cam_name, cwd_path=os.getcwd()):
+    last_day_processed_imgs = []
+    if os.path.exists(os.path.join(cwd_path, 'db', f'{cam_name}_last_day_processed_imgs.csv')):
+        last_day_processed_imgs = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_last_day_processed_imgs.csv'))
+        if len(last_day_processed_imgs) <= 1:
+            last_day_processed_imgs = [str(last_day_processed_imgs.squeeze())]
+        else:
+            last_day_processed_imgs = last_day_processed_imgs.squeeze().to_list()
+    return last_day_processed_imgs
+
+
+def save_last_day_processed_imgs(last_day_processed_imgs, cam_name, cwd_path=os.getcwd()):
+    last_day_processed_imgs = pd.Series(last_day_processed_imgs)
+    last_day_processed_imgs.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_last_day_processed_imgs.csv'), index=False)
+
