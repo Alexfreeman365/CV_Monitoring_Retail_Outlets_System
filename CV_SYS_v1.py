@@ -88,7 +88,7 @@ if __name__ == '__main__':
                     time.sleep(5)
         except Exception as error:
             log_event(cwd_path, app_name, 'error', type(error).__name__)
-            kill_hiFTPCleaner_CVloadAntifreeze(process)
+            kill_hiFTPCleaner_CVloadAntifreeze(process) #3
             raise error
 
     except KeyboardInterrupt:
@@ -102,6 +102,6 @@ if __name__ == '__main__':
         save_shape_db_info(cam_names)
 
         log_event(cwd_path, app_name, 'sys', 'Starting the system')
-        kill_hiFTPCleaner_CVloadAntifreeze(process) #3
+        kill_hiFTPCleaner_CVloadAntifreeze(process) #4
 
 
