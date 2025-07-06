@@ -122,7 +122,7 @@ if __name__ == '__main__':
 
     request = f"Введите данные:\n" \
               f"bot_token->:\nchat_id->:\nЖурнал событий->: Нет\n{'-' * 30}"
-    data = request_app_description('11_FTPDataAlert', cwd_path, request, DESCRIPTION)
+    data = request_app_description(app_name, cwd_path, request, DESCRIPTION)
     bot_token, chat_id, ledger_msg = data
     chat_id = int(chat_id)
     bot = telebot.TeleBot(bot_token)
