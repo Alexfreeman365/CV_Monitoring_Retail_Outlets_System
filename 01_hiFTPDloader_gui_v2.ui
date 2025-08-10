@@ -2892,7 +2892,7 @@
        </font>
       </property>
       <property name="text">
-       <string>Сделано для Beget хост и USB FTP роутера D-Link(usb1_1(0)/камера)</string>
+       <string>Сделано для Beget Хостинг https://beget.com/p739042</string>
       </property>
       <property name="alignment">
        <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
