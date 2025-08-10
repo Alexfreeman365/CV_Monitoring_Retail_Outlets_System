@@ -6,18 +6,13 @@ from PyQt5.QtWidgets import (QDialog,
                              QLineEdit, QRadioButton,
                              QPushButton, QProgressBar,
                              QLabel, QMessageBox)
-# Operating with the computer's file system
 import os
-# Deleting an entire branch of the file system along with the contents
-import shutil
-# Getting the html code of a page via a http request
-import requests
-# Converting the html code of the page for convenient processing
-from bs4 import BeautifulSoup
 import time
 from datetime import datetime, timedelta
 import pickle
 import ftplib
+
+from funcs_TxtUI_request_app_description import log_event, cleanup_mei_folders
 
 '''
 class Ui_Dialog from Qt designer file. To get it, use this code:
@@ -1222,7 +1217,7 @@ class Ui_Dialog_rus(object):
         Dialog.setContextMenuPolicy(QtCore.Qt.NoContextMenu)
         Dialog.setAcceptDrops(False)
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap("D:\\07_Development\\hiSDparser\\Favicon.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon.addPixmap(QtGui.QPixmap("D:\\07_Development\\Pjs\\CV_Monitoring_Retail_Outlets_System\\Favicon.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         Dialog.setWindowIcon(icon)
         Dialog.setWhatsThis("")
         Dialog.setLocale(QtCore.QLocale(QtCore.QLocale.English, QtCore.QLocale.UnitedStates))
@@ -2391,7 +2386,7 @@ class Ui_Dialog_rus(object):
         self.label_2.setText(_translate("Dialog", "Время для каждого дня ( с 00:00 до 24:00 )"))
         self.radioButton_4.setText(_translate("Dialog", "Каждые 5с"))
         self.pushButton_6.setText(_translate("Dialog", "Спасибо!"))
-        self.label_22.setText(_translate("Dialog", "Сделано для Beget хост и USB FTP роутера D-Link(usb1_1(0)/камера)"))
+        self.label_22.setText(_translate("Dialog", "Сделано для Beget Хостинг https://beget.com/p739042"))
         self.delete_from_ftp.setText(_translate("Dialog", "Удалить файлы камеры с FTP диска:"))
         self.pushButton_3.setText(_translate("Dialog", "[Дни]"))
         self.cameras.setText(_translate("Dialog", "[Камеры]"))
@@ -2436,12 +2431,15 @@ class GetDays(QThread):
 
     def run(self):
         def get_days_dd():
-            ftp = ftplib.FTP(self.ftp_host)
-            ftp.login(self.ftp_user, self.ftp_pas)
-            days = [day.split('/')[-1] for day in ftp.nlst(self.cam_name)
-                    if day.split('/')[-1].replace('-', '').isdigit()]
-            dd = '-' if days and len(days[0].replace('-', '')) != len(days[0]) else ''
-            return [day.replace('-', '') for day in days], dd
+            try:
+                ftp = ftplib.FTP(self.ftp_host, timeout=30)
+                ftp.login(self.ftp_user, self.ftp_pas)
+                days = [day.split('/')[-1] for day in ftp.nlst(self.cam_name)
+                        if day.split('/')[-1].replace('-', '').isdigit()]
+                dd = '-' if days and len(days[0].replace('-', '')) != len(days[0]) else ''
+                return [day.replace('-', '') for day in days], dd
+            except Exception as e:
+                return [], ''
 
         try:
             self.enable_disable_ui.emit(False)
@@ -2546,12 +2544,15 @@ class EstimateThread(QThread):
     def run(self):
         # Function to get the entire range of days existing on the SD card
         def get_days_dd():
-            ftp = ftplib.FTP(self.ftp_host)
-            ftp.login(self.ftp_user, self.ftp_pas)
-            days = [day.split('/')[-1] for day in ftp.nlst(self.cam_name)
-                    if day.split('/')[-1].replace('-', '').isdigit()]
-            dd = '-' if days and len(days[0].replace('-', '')) != len(days[0]) else ''
-            return [day.replace('-', '') for day in days], dd
+            try:
+                ftp = ftplib.FTP(self.ftp_host, timeout=30)
+                ftp.login(self.ftp_user, self.ftp_pas)
+                days = [day.split('/')[-1] for day in ftp.nlst(self.cam_name)
+                        if day.split('/')[-1].replace('-', '').isdigit()]
+                dd = '-' if days and len(days[0].replace('-', '')) != len(days[0]) else ''
+                return [day.replace('-', '') for day in days], dd
+            except Exception as e:
+                return [], ''
 
         def get_day_folders(day):
             ftp = ftplib.FTP(self.ftp_host)
@@ -2762,17 +2763,20 @@ class ParseThread(QThread):
         self.language = self.main_window.language
         self.text_wait = self.main_window.text_wait
         self.text_done = self.main_window.text_done
+        self.max_retries = 100 # Maximum number of reconnection attempts
+        self.app_name = QtCore.QCoreApplication.arguments()[0].split('\\')[-1].split('.')[0]
 
     def run(self):
-        # The following 5 functions are similar
-        # and described in detail in the first working thread
         def get_days_dd():
-            ftp = ftplib.FTP(self.ftp_host)
-            ftp.login(self.ftp_user, self.ftp_pas)
-            days = [day.split('/')[-1] for day in ftp.nlst(self.cam_name)
-                    if day.split('/')[-1].replace('-', '').isdigit()]
-            dd = '-' if days and len(days[0].replace('-', '')) != len(days[0]) else ''
-            return [day.replace('-', '') for day in days], dd
+            try:
+                ftp = ftplib.FTP(self.ftp_host, timeout=30)
+                ftp.login(self.ftp_user, self.ftp_pas)
+                days = [day.split('/')[-1] for day in ftp.nlst(self.cam_name)
+                        if day.split('/')[-1].replace('-', '').isdigit()]
+                dd = '-' if days and len(days[0].replace('-', '')) != len(days[0]) else ''
+                return [day.replace('-', '') for day in days], dd
+            except Exception as e:
+                return [], ''
 
         def get_day_folders(day):
             ftp = ftplib.FTP(self.ftp_host)
@@ -2930,33 +2934,44 @@ class ParseThread(QThread):
         def download_files(ftp, file_type, image_last_pc_day_filenames,
                            video_last_pc_day_filenames, day, links, deletion):
             for link in links:
-                # Getting a title for a future video
-                file_line = link.split('/')[-1]
-                # Moving the video status to the end of the title for
-                # the correct sorting of files by the operating system.
-                file_title = file_line.split('.')[0]
-                file_extension = file_line.split('.')[1]
-                file_status = file_line[0]
-                if file_type in ['_images', '_photos']:
-                    file_name = file_title[1:] + '.' + file_extension
-                    if file_name not in image_last_pc_day_filenames:
-                        with open(os.path.join(self.main_window.output_dir, self.cam_name.split('/')[-1] + file_type,
-                                               day, file_name), 'wb') as file:
-                            ftp.retrbinary(f"RETR {link}", file.write)
-                    if self.with_deletion_status and deletion:
-                        ftp.delete(link)
+                try:
+                    # Getting a title for a future video
+                    file_line = link.split('/')[-1]
+                    # Moving the video status to the end of the title for
+                    # the correct sorting of files by the operating system.
+                    file_title = file_line.split('.')[0]
+                    file_extension = file_line.split('.')[1]
+                    file_status = file_line[0]
+                    if file_type in ['_images', '_photos']:
+                        file_name = file_title[1:] + '.' + file_extension
+                        if file_name not in image_last_pc_day_filenames:
+                            with open(os.path.join(self.main_window.output_dir, self.cam_name.split('/')[-1] + file_type,
+                                                   day, file_name), 'wb') as file:
+                                ftp.retrbinary(f"RETR {link}", file.write)
+                        if self.with_deletion_status and deletion:
+                            ftp.delete(link)
 
-                if file_type in ['_videos', '_videos']:
-                    file_name = file_title[1:] + '_' + file_status + '.' + file_extension
-                    if file_name not in video_last_pc_day_filenames:
-                        with open(os.path.join(self.main_window.output_dir, self.cam_name.split('/')[-1] + file_type,
-                                               day, file_name), 'wb') as file:
-                            ftp.retrbinary(f"RETR {link}", file.write)
-                    if self.with_deletion_status and deletion:
-                        ftp.delete(link)
-                # Updating the progress bar for videos
-                count_progress = self.main_window.progressBar_videos.value() + 1
-                self.progress_videos_process.emit(count_progress)
+                    if file_type in ['_videos', '_videos']:
+                        file_name = file_title[1:] + '_' + file_status + '.' + file_extension
+                        if file_name not in video_last_pc_day_filenames:
+                            with open(os.path.join(self.main_window.output_dir, self.cam_name.split('/')[-1] + file_type,
+                                                   day, file_name), 'wb') as file:
+                                ftp.retrbinary(f"RETR {link}", file.write)
+                        if self.with_deletion_status and deletion:
+                            ftp.delete(link)
+                    # Updating the progress bar for videos
+                    count_progress = self.main_window.progressBar_videos.value() + 1
+                    self.progress_videos_process.emit(count_progress)
+                except (ftplib.error_temp, ftplib.error_perm) as e:
+                    # If the connection fails, reconnect
+                    log_event(os.getcwd(), self.app_name, self.cam_name, e)
+                    time.sleep(5)
+                    ftp = ftplib.FTP(self.ftp_host, timeout=30)
+                    ftp.login(self.ftp_user, self.ftp_pas)
+                    continue  # Try again for the current file
+                except Exception as e:
+                    log_event(os.getcwd(), self.app_name, self.cam_name, e)
+                    continue  # Skipping the problematic file
 
         # A function that downloads videos from the received dictionary
         # from the previous function with the creation of a file structure.
@@ -3057,80 +3072,43 @@ class ParseThread(QThread):
             self.progress_days_start.emit(10)
             self.progress_days_process.emit(10)
 
-        def downloading_pipeline():
-            # Disable UI to prevent unauthorized actions
-            self.enable_disable_ui.emit(False)
-            # Sending a message to the user about the need to wait
-            self.message.emit(self.text_wait)
-            # Getting a list of existing days on the SD card
-            self.days, self.dd = get_days_dd()
-
-            if self.main_window.radioButton_refresh.isChecked():
-                image_day_start, video_day_start = get_last_pc_day()
-                image_day_end, video_day_end = self.days[-1], self.days[-1]
-
-                if self.main_window.radioButton_images.isChecked():
-                    range_days_num = self.days.index(image_day_end) - self.days.index(image_day_start) + 1
-                else:
-                    range_days_num = self.days.index(video_day_end) - self.days.index(video_day_start) + 1
-
-            else:
-                image_day_start, video_day_start = self.day_start, self.day_start
-                image_day_end, video_day_end = self.day_end, self.day_end
-                # Getting the number of days in the selected range by the user
-                range_days_num = self.days.index(self.day_end) - self.days.index(self.day_start) + 1
-
-            self.progress_days_start.emit(range_days_num)
-            self.image_links_dict, self.video_links_dict = get_video_links(image_day_start, video_day_start,
-                                                                           image_day_end, video_day_end)
-            if len(self.image_links_dict) != 0:
-                download_series(self.image_links_dict)
-            if len(self.video_links_dict) != 0:
-                download_series(self.video_links_dict)
-
-            self.message.emit(self.text_done)
-            self.enable_disable_ui.emit(True)
-
-        def downloading_pipeline_error():
-            self.enable_disable_ui.emit(True)
-            if self.language == 'eng':
-                text_error = '<FONT COLOR=#f4320c>Problems with the connection or the selected time interval.</FONT>'
-            else:
-                text_error = '<FONT COLOR=#f4320c>Проблемы с соединением или выбранным промежутком времени.</FONT>'
-            self.message.emit(text_error)
-
-        # Starting thread execution in the try-except error handling construct
-        # The structure is similar to the launch of the first working thread.
-        # For a detailed description, see there.
-
-        first_launch = True
-        dl_process = True
-        while dl_process:
+        def downloading_pipeline(text, mode='main'):
             try:
-                if not first_launch:
-                    time.sleep(5)
-                downloading_pipeline()
-                dl_process = False
-            except:
-                downloading_pipeline_error()
-                first_launch = False
+                # Disable UI to prevent unauthorized actions
+                self.enable_disable_ui.emit(False)
+                # Sending a message to the user about the need to wait
+                self.message.emit(text)
+                # Getting a list of existing days on the SD card
+                self.days, self.dd = get_days_dd()
 
-        if self.main_window.radioButton_auto.isChecked():
-            self.ftr_from = self.main_window.ftr_from
-            self.ftr_to = self.main_window.ftr_to
-            while self.main_window.radioButton_auto.isChecked():
-                try:
-                    # Disable UI to prevent unauthorized actions
-                    self.enable_disable_ui.emit(False)
-                    # Sending a message to the user about the need to wait
-                    if self.language == 'eng':
-                        text_wait = '<FONT COLOR=#02a8ab>-=:AUTO_ARCHIVE_REFRESHING:=-</FONT>'
+                if mode == 'main':
+                    if self.main_window.radioButton_refresh.isChecked():
+                        image_day_start, video_day_start = get_last_pc_day()
+                        image_day_end, video_day_end = self.days[-1], self.days[-1]
+
+                        if self.main_window.radioButton_images.isChecked():
+                            range_days_num = self.days.index(image_day_end) - self.days.index(image_day_start) + 1
+                        else:
+                            range_days_num = self.days.index(video_day_end) - self.days.index(video_day_start) + 1
+
                     else:
-                        text_wait = '<FONT COLOR=#02a8ab>-=:АВТО_ОБНОВЛЕНИЕ_АРХИВА:=-</FONT>'
-                    self.message.emit(text_wait)
-                    # Getting a list of existing days on the SD card
-                    self.days, self.dd = get_days_dd()
+                        image_day_start, video_day_start = self.day_start, self.day_start
+                        image_day_end, video_day_end = self.day_end, self.day_end
+                        # Getting the number of days in the selected range by the user
+                        range_days_num = self.days.index(self.day_end) - self.days.index(self.day_start) + 1
 
+                    self.progress_days_start.emit(range_days_num)
+                    self.image_links_dict, self.video_links_dict = get_video_links(image_day_start, video_day_start,
+                                                                                   image_day_end, video_day_end)
+                    if len(self.image_links_dict) != 0:
+                        download_series(self.image_links_dict)
+                    if len(self.video_links_dict) != 0:
+                        download_series(self.video_links_dict)
+
+                    self.message.emit(self.text_done)
+                    self.enable_disable_ui.emit(True)
+
+                elif mode == 'auto':
                     if len(self.days) != 0:
                         image_day_start, video_day_start = get_last_pc_day()
                         image_day_end, video_day_end = self.days[-1], self.days[-1]
@@ -3153,7 +3131,51 @@ class ParseThread(QThread):
 
                         self.progress_days_start.emit(10)
                         self.progress_videos_start.emit(10)
-                    self.enable_disable_ui.emit(True)
+                self.enable_disable_ui.emit(True)
+            except Exception as e:
+                raise  # Passing an exception for processing to the attempt_download
+
+        def downloading_pipeline_error():
+            self.enable_disable_ui.emit(True)
+            if self.language == 'eng':
+                text_error = '<FONT COLOR=#f4320c>Problems with the connection or the selected time interval.</FONT>'
+            else:
+                text_error = '<FONT COLOR=#f4320c>Проблемы с соединением или выбранным промежутком времени.</FONT>'
+            self.message.emit(text_error)
+
+        def attempt_download(text_wait, mode):
+            for attempt in range(self.max_retries):
+                try:
+                    downloading_pipeline(text_wait, mode=mode)
+                    return True
+                except (ftplib.error_temp, ftplib.error_perm):
+                    downloading_pipeline_error()
+                    log_event(os.getcwd(), self.app_name, self.cam_name, f'Reconnect attempt: {attempt}')
+                    if attempt < self.max_retries - 1:
+                        time.sleep(5)  # Pause before trying again
+                        continue
+                    return False
+                except Exception:
+                    return False
+
+        # The main execution cycle
+        success = attempt_download(self.text_wait, mode='main')
+
+        if self.main_window.radioButton_auto.isChecked():
+            self.ftr_from = self.main_window.ftr_from
+            self.ftr_to = self.main_window.ftr_to
+            while self.main_window.radioButton_auto.isChecked():
+                try:
+                    # Sending a message to the user about the need to wait
+                    if self.language == 'eng':
+                        text_wait = '<FONT COLOR=#02a8ab>-=:AUTO_ARCHIVE_REFRESHING:=-</FONT>'
+                    else:
+                        text_wait = '<FONT COLOR=#02a8ab>-=:АВТО_ОБНОВЛЕНИЕ_АРХИВА:=-</FONT>'
+
+                    if not success:
+                        time.sleep(10)  # Extended pause in case of an error
+                    success = attempt_download(text_wait, mode='auto')
+
                 except:
                     self.enable_disable_ui.emit(True)
                     if self.language == 'eng':
@@ -3212,12 +3234,15 @@ class DeleteThread(QThread):
     def run(self):
         # Function to get the entire range of days existing on the SD card
         def get_days_dd():
-            ftp = ftplib.FTP(self.ftp_host)
-            ftp.login(self.ftp_user, self.ftp_pas)
-            days = [day.split('/')[-1] for day in ftp.nlst(self.cam_name)
-                    if day.split('/')[-1].replace('-', '').isdigit()]
-            dd = '-' if days and len(days[0].replace('-', '')) != len(days[0]) else ''
-            return [day.replace('-', '') for day in days], dd
+            try:
+                ftp = ftplib.FTP(self.ftp_host, timeout=30)
+                ftp.login(self.ftp_user, self.ftp_pas)
+                days = [day.split('/')[-1] for day in ftp.nlst(self.cam_name)
+                        if day.split('/')[-1].replace('-', '').isdigit()]
+                dd = '-' if days and len(days[0].replace('-', '')) != len(days[0]) else ''
+                return [day.replace('-', '') for day in days], dd
+            except Exception as e:
+                return [], ''
 
         def get_day_folders(day):
             ftp = ftplib.FTP(self.ftp_host)
@@ -3479,10 +3504,10 @@ class UI(QDialog):
         self.str_to = ''
         self.alarm_only = True
         # Setting the output directory to the current program folder
-        self.output_dir = os.getcwd() + '/'
+        self.cwd_path = os.getcwd()
+        self.output_dir = self.cwd_path + '/'
         self.days = []
         self.cameras = []
-        self.cwd_path = os.getcwd()
 
         # Connecting button signals to their slots (functions)
         self.pushButton_days.clicked.connect(self.button_days_clicked)
@@ -3973,6 +3998,10 @@ class UI(QDialog):
             self.button_days_clicked()
             if self.radioButton_auto.isChecked():
                 self.button_parse_clicked()
+
+    def closeEvent(self, event):
+        cleanup_mei_folders()  # Очистка перед закрытием
+        event.accept()  # Подтверждаем закрытие
 
 
 def main():
