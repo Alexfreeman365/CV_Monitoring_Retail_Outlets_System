@@ -6,6 +6,8 @@ db/
 db_backups/
 temp/
 venv/
+VA_PC_client/
+VA_PC_CV/
 
 *.exe
 *.ipynb
