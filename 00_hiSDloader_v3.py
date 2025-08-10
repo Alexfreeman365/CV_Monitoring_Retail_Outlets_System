@@ -6,18 +6,15 @@ from PyQt5.QtWidgets import (QDialog,
                              QLineEdit, QRadioButton,
                              QPushButton, QProgressBar,
                              QLabel, QMessageBox)
-# Operating with the computer's file system
 import os
-# Deleting an entire branch of the file system along with the contents
-import shutil
-# Getting the html code of a page via a http request
 import requests
-# Converting the html code of the page for convenient processing
 from bs4 import BeautifulSoup
 import time
 from datetime import datetime, timedelta
 import pickle
 import telebot
+
+from funcs_TxtUI_request_app_description import log_event, cleanup_mei_folders
 
 '''
 class Ui_Dialog from Qt designer file. To get it, use this code:
@@ -40,9 +37,6 @@ class Ui_Dialog(object):
         Dialog.setMouseTracking(False)
         Dialog.setContextMenuPolicy(QtCore.Qt.NoContextMenu)
         Dialog.setAcceptDrops(False)
-        icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap("D:\\07_Development\\hiSDparser\\Favicon.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
-        Dialog.setWindowIcon(icon)
         Dialog.setWhatsThis("")
         Dialog.setLocale(QtCore.QLocale(QtCore.QLocale.Russian, QtCore.QLocale.Russia))
         Dialog.setInputMethodHints(QtCore.Qt.ImhNone)
@@ -365,7 +359,7 @@ class Ui_Dialog(object):
         font = QtGui.QFont()
         font.setPointSize(11)
         self.token.setFont(font)
-        self.token.setInputMethodHints(QtCore.Qt.ImhNone)
+        self.token.setInputMethodHints(QtCore.Qt.ImhNoAutoUppercase|QtCore.Qt.ImhNoPredictiveText|QtCore.Qt.ImhSensitiveData)
         self.token.setInputMask("")
         self.token.setText("")
         self.token.setEchoMode(QtWidgets.QLineEdit.PasswordEchoOnEdit)
@@ -1018,9 +1012,10 @@ class Ui_Dialog(object):
         font = QtGui.QFont()
         font.setPointSize(11)
         self.chat_id.setFont(font)
-        self.chat_id.setInputMethodHints(QtCore.Qt.ImhNone)
+        self.chat_id.setInputMethodHints(QtCore.Qt.ImhNoAutoUppercase|QtCore.Qt.ImhNoPredictiveText|QtCore.Qt.ImhSensitiveData)
         self.chat_id.setInputMask("")
         self.chat_id.setText("")
+        self.chat_id.setEchoMode(QtWidgets.QLineEdit.PasswordEchoOnEdit)
         self.chat_id.setObjectName("chat_id")
         self.gridLayout.addWidget(self.chat_id, 21, 9, 1, 2)
         self.radioButton = QtWidgets.QRadioButton(self.gridLayoutWidget)
@@ -1252,7 +1247,7 @@ class EstimateThread(QThread):
             # Structuring a html page in the SD section
             soup = BeautifulSoup(r.content, 'html5lib')
             # Getting all links on a page using the 'a' tag
-            day_links = soup.findAll('a')
+            day_links = soup.find_all('a')
             # Getting rows with days
             dirty_days = [link['href'] for link in day_links if any(map(str.isdigit, link['href']))]
             # Clearing rows to get days
@@ -1265,7 +1260,7 @@ class EstimateThread(QThread):
         def get_day_folders(host_sd, day):
             r = requests.get(host_sd + day + '/')
             soup = BeautifulSoup(r.content, 'html5lib')
-            day_folder_rows = soup.findAll('a')[4:]
+            day_folder_rows = soup.find_all('a')[4:]
             return [''.join(list(row)) for row in day_folder_rows if any(map(str.isdigit, ''.join(list(row))))]
 
         # Formation of a custom time range: a condition for the first hour range
@@ -1357,7 +1352,7 @@ class EstimateThread(QThread):
                             # Unlike the 'a' tag, which points to links,
                             # the 'tr' tag shows an entire row of the table,
                             # which contains both a link to the file and its size.
-                            links = soup.findAll('tr')
+                            links = soup.find_all('tr')
                             # Postponing only those lines that are included in our conditions
                             folder_video_links = [link for link in links[3:] if
                                                   (image_time_condition_ftr(link) | image_time_condition_str(link))]
@@ -1378,7 +1373,7 @@ class EstimateThread(QThread):
                             # Unlike the 'a' tag, which points to links,
                             # the 'tr' tag shows an entire row of the table,
                             # which contains both a link to the file and its size.
-                            links = soup.findAll('tr')
+                            links = soup.find_all('tr')
                             # Postponing only those lines that are included in our conditions
                             folder_video_links = [link for link in links[3:] if
                                                   plan_condition(link) & (time_condition_ftr(link) |
@@ -1402,7 +1397,7 @@ class EstimateThread(QThread):
                             # Unlike the 'a' tag, which points to links,
                             # the 'tr' tag shows an entire row of the table,
                             # which contains both a link to the file and its size.
-                            links = soup.findAll('tr')
+                            links = soup.find_all('tr')
                             # Postponing only those lines that are included in our conditions
                             folder_video_links = [link for link in links[3:] if
                                                   alarm_condition(link) & (time_condition_ftr(link) |
@@ -1503,13 +1498,15 @@ class ParseThread(QThread):
         self.days = []
         self.image_links_dict = {}
         self.video_links_dict = {}
-
         self.lineEdit_cam_name = self.main_window.lineEdit_cam_name
         self.lineEdit_token = self.main_window.lineEdit_token
         self.lineEdit_chat_id = self.main_window.lineEdit_chat_id
         self.TOKEN = self.lineEdit_token.text()
         self.chat_id = (self.lineEdit_chat_id.text())
-        self.bot = telebot.TeleBot(self.TOKEN, parse_mode=None)
+        if self.TOKEN:
+            self.bot = telebot.TeleBot(self.TOKEN, parse_mode=None)
+        self.max_retries = 100  # Maximum number of reconnection attempts
+        self.app_name = QtCore.QCoreApplication.arguments()[0].split('\\')[-1].split('.')[0]
 
     def run(self):
         # The following 5 functions are similar
@@ -1517,14 +1514,14 @@ class ParseThread(QThread):
         def get_days():
             r = requests.get(self.host_sd)
             soup = BeautifulSoup(r.content, 'html5lib')
-            day_links = soup.findAll('a')
+            day_links = soup.find_all('a')
             dirty_days = [link['href'] for link in day_links if any(map(str.isdigit, link['href']))]
             return [day.split('/')[2] for day in dirty_days if day.split('/')[2].isdigit()]
 
         def get_day_folders(host_sd, day):
             r = requests.get(host_sd + day + '/')
             soup = BeautifulSoup(r.content, 'html5lib')
-            day_folder_rows = soup.findAll('a')[4:]
+            day_folder_rows = soup.find_all('a')[4:]
             return [''.join(list(row)) for row in day_folder_rows if any(map(str.isdigit, ''.join(list(row))))]
 
         def time_condition_ftr(link):
@@ -1610,7 +1607,7 @@ class ParseThread(QThread):
                         for folder in day_image_folders:
                             r = requests.get(self.host_sd + day + '/' + folder)
                             soup = BeautifulSoup(r.content, 'html5lib')
-                            links = soup.findAll('a')
+                            links = soup.find_all('a')
                             folder_image_links = [self.host + link['href']
                                                   for link in links[4:]
                                                   if (image_time_condition_ftr(link) | image_time_condition_str(link))]
@@ -1625,7 +1622,7 @@ class ParseThread(QThread):
                         for folder in day_video_folders:
                             r = requests.get(self.host_sd + day + '/' + folder)
                             soup = BeautifulSoup(r.content, 'html5lib')
-                            links = soup.findAll('a')
+                            links = soup.find_all('a')
                             folder_video_links = [self.host + link['href']
                                                   for link in links[4:]
                                                   if plan_condition(link) & (time_condition_ftr(link)
@@ -1641,7 +1638,7 @@ class ParseThread(QThread):
                         for folder in day_video_folders:
                             r = requests.get(self.host_sd + day + '/' + folder)
                             soup = BeautifulSoup(r.content, 'html5lib')
-                            links = soup.findAll('a')
+                            links = soup.find_all('a')
                             folder_video_links = [self.host + link['href']
                                                   for link in links[4:]
                                                   if alarm_condition(link) & (time_condition_ftr(link)
@@ -1780,6 +1777,19 @@ class ParseThread(QThread):
             self.progress_days_start.emit(10)
             self.progress_days_process.emit(10)
 
+        def attempt_download(links_dict_):
+            for attempt in range(self.max_retries):
+                try:
+                    download_series(links_dict_)
+                    return True
+                except Exception as e:
+                    log_event(os.getcwd(), self.app_name, self.lineEdit_cam_name,
+                              f'Error: {e}. Reconnect attempt: {attempt}')
+                    if attempt < self.max_retries - 1:
+                        time.sleep(5)  # Pause before trying again
+                        continue
+                    return False
+
         # Starting thread execution in the try-except error handling construct
         # The structure is similar to the launch of the first working thread.
         # For a detailed description, see there.
@@ -1811,9 +1821,9 @@ class ParseThread(QThread):
             self.image_links_dict, self.video_links_dict = get_video_links(image_day_start, video_day_start,
                                                                            image_day_end, video_day_end)
             if len(self.image_links_dict) != 0:
-                download_series(self.image_links_dict)
+                attempt_download(self.image_links_dict)
             if len(self.video_links_dict) != 0:
-                download_series(self.video_links_dict)
+                attempt_download(self.video_links_dict)
 
             text_done = '<FONT COLOR=#008000>Выполнено!</FONT>'
             self.message.emit(text_done)
@@ -1853,9 +1863,13 @@ class ParseThread(QThread):
                     self.image_links_dict, self.video_links_dict = get_video_links(image_day_start, video_day_start,
                                                                                    image_day_end, video_day_end)
                     if len(self.image_links_dict) != 0:
-                        download_series(self.image_links_dict)
+                        success = attempt_download(self.image_links_dict)
+                        if not success:
+                            time.sleep(10)
                     if len(self.video_links_dict) != 0:
-                        download_series(self.video_links_dict)
+                        success = attempt_download(self.video_links_dict)
+                        if not success:
+                            time.sleep(10)
 
                     self.progress_days_start.emit(10)
                     self.progress_videos_start.emit(10)
@@ -1871,8 +1885,9 @@ class ParseThread(QThread):
                                 ip = self.lineEdit_cam_name.text()
                             else:
                                 ip = self.ip.replace(':', '_')
-                            self.bot.send_message(self.chat_id,
-                                                  f'Внимание! Карта памяти камеры {ip} недоступна.')
+                            if self.TOKEN:
+                                self.bot.send_message(self.chat_id,
+                                                      f'Внимание! Карта памяти камеры {ip} недоступна.')
                         except:
                             pass
                     first_time_bot_notification += 1
@@ -1909,13 +1924,10 @@ class GetDays(QThread):
         self.host_sd = self.main_window.host_sd
         self.host = self.main_window.host
         self.days = []
-
+        self.app_name = QtCore.QCoreApplication.arguments()[0].split('\\')[-1].split('.')[0]
         self.lineEdit_cam_name = self.main_window.lineEdit_cam_name
         self.lineEdit_token = self.main_window.lineEdit_token
         self.lineEdit_chat_id = self.main_window.lineEdit_chat_id
-        self.TOKEN = self.lineEdit_token.text()
-        self.chat_id = (self.lineEdit_chat_id.text())
-        self.bot = telebot.TeleBot(self.TOKEN, parse_mode=None)
 
     def run(self):
         # Function for connecting to the camera and parsing the SD card
@@ -1923,7 +1935,7 @@ class GetDays(QThread):
         def get_days():
             r = requests.get(self.host_sd)
             soup = BeautifulSoup(r.content, 'html5lib')
-            day_links = soup.findAll('a')
+            day_links = soup.find_all('a')
             dirty_days = [link['href'] for link in day_links if any(map(str.isdigit, link['href']))]
             return [day.split('/')[2] for day in dirty_days if day.split('/')[2].isdigit()]
 
@@ -1942,7 +1954,8 @@ class GetDays(QThread):
             self.message.emit(text_day_range)
             self.days_message.emit(self.days)
             self.enable_disable_ui.emit(True)
-        except:
+        except Exception as e:
+            log_event(os.getcwd(), self.app_name, self.lineEdit_cam_name, e)
             self.start_enable_ui.emit(True)
             text_error = '<FONT COLOR=#f4320c>Ошибка</FONT>'
             self.status_message.emit(text_error)
@@ -2030,9 +2043,9 @@ class UI(QDialog):
         self.str_to = ''
         self.alarm_only = True
         # Setting the output directory to the current program folder
-        self.output_dir = os.getcwd() + '/'
-        self.days = []
         self.cwd_path = os.getcwd()
+        self.output_dir = self.cwd_path + '/'
+        self.days = []
 
         # Connecting button signals to their slots (functions)
         self.pushButton_days.clicked.connect(self.button_days_clicked)
@@ -2425,6 +2438,10 @@ class UI(QDialog):
             self.button_days_clicked()
             if self.radioButton_auto.isChecked():
                 self.button_parse_clicked()
+
+    def closeEvent(self, event):
+        cleanup_mei_folders()  # Очистка перед закрытием
+        event.accept()  # Подтверждаем закрытие
 
 
 def main():
