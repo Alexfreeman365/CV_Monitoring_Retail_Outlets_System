@@ -4,6 +4,9 @@ from datetime import timedelta
 from funcs_FTP_access_cams_media_structure import *
 from funcs_TxtUI_request_app_description import *
 
+import atexit
+atexit.register(cleanup_mei_folders)
+
 
 def create_txt_window_request(text_note_path):
     if os.path.exists(text_note_path):
@@ -101,14 +104,12 @@ DESCRIPTION = (
 
 
 if __name__ == '__main__':
-    # cwd_path = 'L:\Active_pjs\RG\cams_media'
-    # cwd_path = 'G:\hiFTPCleaner_beget'
     cwd_path = os.getcwd()
-    app_name = '02_hiFTPCleaner'
+    app_name = os.path.basename(sys.executable).split('.')[0]
 
     request = f"Введите данные >>>\n" \
               f"Временное окно в днях->:\nПериод проверки в часах->:\nЖурнал событий->: Нет\n{'-' * 30}"
-    data = request_app_description('02_hiFTPCleaner', cwd_path, request, DESCRIPTION)
+    data = request_app_description(app_name, cwd_path, request, DESCRIPTION)
 
     note_text, check_period, ledger_msg = data
     str_window = note_text.split('-')[0]
@@ -128,35 +129,42 @@ if __name__ == '__main__':
     except:
         usb_part = ''
 
-    if window:
-        while True:
-            try:
-                ftp_host, ftp_user, ftp_pas = get_ftp_host_user_pas(cwd_path)
-                cam_names = get_cam_names(ftp_host, ftp_user, ftp_pas)
-                cam_names = [name for name in cam_names if name != '.cache']
-                print(cam_names)
+    try:
+        if window:
+            while True:
+                try:
+                    ftp_host, ftp_user, ftp_pas = get_ftp_host_user_pas(cwd_path)
+                    cam_names = get_cam_names(ftp_host, ftp_user, ftp_pas)
+                    cam_names = [name for name in cam_names if name != '.cache']
+                    print(cam_names)
 
-                if usb_part:
-                    cam_names = [usb_part+'/'+cam for cam in cam_names]
+                    if usb_part:
+                        cam_names = [usb_part+'/'+cam for cam in cam_names]
 
-                if len(cam_names) != 0:
-                    check_delete(ftp_host, ftp_user, ftp_pas, cam_names, window)
+                    if len(cam_names) != 0:
+                        check_delete(ftp_host, ftp_user, ftp_pas, cam_names, window)
 
-                cur_dt = datetime.today()
-                diff_to_10 = cur_dt.replace(hour=10, minute=0, second=0) - cur_dt
-                periods_to_10 = diff_to_10.seconds / (check_period * 3600)
-                if periods_to_10 < 1:
-                    sleep(diff_to_10.seconds + 60)
-                    check_delete(ftp_host, ftp_user, ftp_pas, cam_names, window)
+                    cur_dt = datetime.today()
+                    diff_to_10 = cur_dt.replace(hour=10, minute=0, second=0) - cur_dt
+                    periods_to_10 = diff_to_10.seconds / (check_period * 3600)
+                    if periods_to_10 < 1:
+                        sleep(diff_to_10.seconds + 60)
+                        check_delete(ftp_host, ftp_user, ftp_pas, cam_names, window)
 
-                sleep(check_period * 3600)
-                # break
-            except Exception as error:
-                if ledger_flag:
-                    log_event(cwd_path, app_name, 'error', type(error).__name__)
-                print(error)
-                sleep(5)
+                    sleep(check_period * 3600)
+                    # break
+                except Exception as error:
+                    if ledger_flag:
+                        log_event(cwd_path, app_name, 'error', type(error).__name__)
+                    print(error)
+                    sleep(5)
 
-    else:
-        log_event(cwd_path, app_name, 'error', 'Окно для проверки дней пустое')
+        else:
+            log_event(cwd_path, app_name, 'error', 'Окно для проверки дней пустое')
+            sys.exit(0)
+
+    except KeyboardInterrupt:
         sys.exit(0)
+    except Exception as e:
+        print(f"Ошибка: {e}", file=sys.stderr)
+        sys.exit(1)
