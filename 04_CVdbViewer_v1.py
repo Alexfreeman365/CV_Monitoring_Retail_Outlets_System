@@ -15,6 +15,8 @@ from PIL import Image, ImageFont, ImageDraw
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
+from funcs_TxtUI_request_app_description import cleanup_mei_folders
+
 
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
@@ -1666,6 +1668,10 @@ class UI(QDialog):
     def button_thanks_clicked(self):
         tel = '<FONT COLOR=#b96902>5469 5400 2720 6935</FONT>'
         self.label_wishes_thanks.setText('Благодарность на карту Сбербанк: ' + tel + ' Алексей')
+
+    def closeEvent(self, event):
+        cleanup_mei_folders()  # Очистка перед закрытием
+        event.accept()  # Подтверждаем закрытие
 
 
 def main():
