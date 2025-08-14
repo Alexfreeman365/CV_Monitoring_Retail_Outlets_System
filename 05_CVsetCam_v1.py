@@ -5,12 +5,11 @@ from PyQt5.QtCore import *
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-import os
-import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
 from funcs_initializer_camconfig_getcamframe import *
+from funcs_TxtUI_request_app_description import cleanup_mei_folders
 
 
 class Ui_Dialog(object):
@@ -2033,6 +2032,10 @@ class UI(QDialog):
         tel = '<FONT COLOR=#b96902>5469 5400 2720 6935</FONT>'
         self.label_wishes_thanks.setText('Благодарность на карту Сбербанк: ' + tel + ' Алексей')
         self.label_out.setText('')
+
+    def closeEvent(self, event):
+        cleanup_mei_folders()  # Очистка перед закрытием
+        event.accept()  # Подтверждаем закрытие
 
 def main():
     app = QApplication(sys.argv)
