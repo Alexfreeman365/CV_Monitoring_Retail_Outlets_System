@@ -1,8 +1,13 @@
 import os
+import sys
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-# import sys
+
+from funcs_TxtUI_request_app_description import cleanup_mei_folders
+
+import atexit
+atexit.register(cleanup_mei_folders)
 
 
 def load_camconfig():
@@ -318,26 +323,35 @@ def evaluation(cam_name, params, camconfig):
 
 
 if __name__ == '__main__':
-    cwd_path = r'L:\Active_pjs\RG' # os.getcwd()
+    cwd_path = os.getcwd()
+    app_name = os.path.basename(sys.executable).split('.')[0]
+    text_params_path = os.path.join(cwd_path, f'{app_name}_current_params.txt')
+    text_program_status_path = os.path.join(cwd_path, f'{app_name}_program_status.txt')
+
     camconfig = load_camconfig()
-    text_params_path = os.path.join(cwd_path, 'SysViscountEval_current_params.txt')
-    text_program_status_path = os.path.join(cwd_path, 'SysViscountEval_program_status.txt')
 
     if not os.path.exists(text_params_path):
         create_txt_params(text_params_path, camconfig)
     else:
-        txt_params = read_txt_params(text_params_path)
+        try:
+            txt_params = read_txt_params(text_params_path)
 
-        create_txt_program_status(text_program_status_path, msg='Ждите...')
+            create_txt_program_status(text_program_status_path, msg='Ждите...')
 
-        for cam_name in txt_params:
-            evaluation(cam_name, txt_params, camconfig)
+            for cam_name in txt_params:
+                evaluation(cam_name, txt_params, camconfig)
 
-        for cam_name in txt_params:
-            for cam_set in camconfig:
-                if cam_set['cam_name'][:-1] == cam_name[:-1]:
-                    cam_set['vis_count_alg'] = txt_params[cam_name]
-        save_camconfig(camconfig)
+            for cam_name in txt_params:
+                for cam_set in camconfig:
+                    if cam_set['cam_name'][:-1] == cam_name[:-1]:
+                        cam_set['vis_count_alg'] = txt_params[cam_name]
+            save_camconfig(camconfig)
 
-        create_txt_program_status(text_program_status_path, msg='Готово!')
+            create_txt_program_status(text_program_status_path, msg='Готово!')
+
+        except KeyboardInterrupt:
+            sys.exit(0)
+        except Exception as e:
+            print(f"Ошибка: {e}", file=sys.stderr)
+            sys.exit(1)
 
