@@ -1,5 +1,11 @@
 import os
+import sys
 from datetime import datetime, timedelta
+
+from funcs_TxtUI_request_app_description import cleanup_mei_folders
+
+import atexit
+atexit.register(cleanup_mei_folders)
 
 
 def create_msg(msg_path, msg):
@@ -19,8 +25,9 @@ def get_request_msg(msg_path):
 
 if __name__ == '__main__':
     cwd_path = os.getcwd()
-    request_msg_path = os.path.join(os.getcwd(), 'MissingPhotoFinder_request.txt')
-    respond_msg_path = os.path.join(cwd_path, 'MissingPhotoFinder_respond.txt')
+    app_name = os.path.basename(sys.executable).split('.')[0]
+    request_msg_path = os.path.join(os.getcwd(), f'{app_name}_request.txt')
+    respond_msg_path = os.path.join(cwd_path, f'{app_name}_respond.txt')
 
     request_msg = ['path:', 'working hours (10-20):']
     good_respond = ['Все OK! Пропусков нет.']
@@ -30,32 +37,39 @@ if __name__ == '__main__':
         create_msg(request_msg_path, request_msg)
     else:
         try:
-            data = get_request_msg(request_msg_path)
-            photo_path, start_hour, end_hour = data
+            try:
+                data = get_request_msg(request_msg_path)
+                photo_path, start_hour, end_hour = data
 
-            photos = os.listdir(photo_path)
+                photos = os.listdir(photo_path)
 
-            f = '%y%m%d%H%M%S'
-            initial_time = datetime.strptime(photos[0][:12], f)
-            start_time = initial_time.replace(hour=start_hour, minute=0, second=0)
-            end_time = initial_time.replace(hour=end_hour - 1, minute=59, second=59)
+                f = '%y%m%d%H%M%S'
+                initial_time = datetime.strptime(photos[0][:12], f)
+                start_time = initial_time.replace(hour=start_hour, minute=0, second=0)
+                end_time = initial_time.replace(hour=end_hour - 1, minute=59, second=59)
 
-            end = [datetime.strptime(i[:12], f) for i in photos] + [end_time]
-            start = [start_time] + end
+                end = [datetime.strptime(i[:12], f) for i in photos] + [end_time]
+                start = [start_time] + end
 
-            diff = list(map(lambda x, y: (x - y).seconds // 60, end, start))
-            miss_time = list(filter(lambda m: m[2] >= 1, zip(start, end, diff)))
+                diff = list(map(lambda x, y: (x - y).seconds // 60, end, start))
+                miss_time = list(filter(lambda m: m[2] >= 1, zip(start, end, diff)))
 
-            hour_min_start = lambda dt: datetime.strftime(dt + timedelta(minutes=1), "%H:%M")
-            hour_min_end = lambda dt: datetime.strftime(dt, "%H:%M")
+                hour_min_start = lambda dt: datetime.strftime(dt + timedelta(minutes=1), "%H:%M")
+                hour_min_end = lambda dt: datetime.strftime(dt, "%H:%M")
 
-            respond_msg = []
-            for r in miss_time:
-                respond_msg.append(f'{hour_min_start(r[0])} - {hour_min_end(r[1])}: ~ {r[2]} min')
+                respond_msg = []
+                for r in miss_time:
+                    respond_msg.append(f'{hour_min_start(r[0])} - {hour_min_end(r[1])}: ~ {r[2]} min')
 
-            if respond_msg:
-                create_msg(respond_msg_path, respond_msg)
-            else:
-                create_msg(respond_msg_path, good_respond)
-        except:
-            create_msg(respond_msg_path, bed_respond)
+                if respond_msg:
+                    create_msg(respond_msg_path, respond_msg)
+                else:
+                    create_msg(respond_msg_path, good_respond)
+            except:
+                create_msg(respond_msg_path, bed_respond)
+
+        except KeyboardInterrupt:
+            sys.exit(0)
+        except Exception as e:
+            print(f"Ошибка: {e}", file=sys.stderr)
+            sys.exit(1)
