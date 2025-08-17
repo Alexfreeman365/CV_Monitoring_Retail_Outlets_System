@@ -6,6 +6,8 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 import os
 import pandas as pd
 
+from funcs_TxtUI_request_app_description import cleanup_mei_folders
+
 
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
@@ -1382,6 +1384,10 @@ class UI(QDialog):
         tel = '<FONT COLOR=#b96902>5469 5400 2720 6935</FONT>'
         self.label_wishes_thanks.setText('Благодарность на карту Сбербанк: ' + tel + ' Алексей')
         self.label_out.setText('')
+
+    def closeEvent(self, event):
+        cleanup_mei_folders()  # Очистка перед закрытием
+        event.accept()  # Подтверждаем закрытие
 
 
 def main():
