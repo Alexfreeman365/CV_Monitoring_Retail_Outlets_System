@@ -3,6 +3,7 @@ import tensorflow as tf
 import time
 from tqdm import tqdm
 import numpy as np
+import csv
 from datetime import datetime
 
 from funcs_initializer_camconfig_getcamframe import *
@@ -43,17 +44,28 @@ def save_shape_db_info(cam_names, cwd_path=os.getcwd()):
     if len(cam_names) != 0:
         shape_db_info = []
         for cam_name in cam_names:
-            if os.path.exists(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv')):
-                df_cam = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
-                first_day = df_cam.iloc[0]['origin_file_name'][:6]
-                last_day = df_cam.iloc[-1]['origin_file_name'][:6]
-                df_cam_len = len(df_cam)
+            cam_shapes_path = os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv')
+            if os.path.exists(cam_shapes_path):
+                with open(cam_shapes_path, 'r', newline='') as csvfile:
+                    reader = csv.DictReader(csvfile)
+                    header = next(reader)
+
+                    first_row = next(reader)
+                    first_day = first_row['origin_file_name'][:6]
+
+                    df_cam_len = 1
+                    last_day = first_day
+
+                    for row in reader:
+                        df_cam_len += 1
+                        last_day = row['origin_file_name'][:6]
+
                 row = {'Camera': cam_name, 'File_name': f'{cam_name}_shapes_locs.csv',
                        'First_day': datetime.strptime(first_day, '%y%m%d'),
                        'Last_day': datetime.strptime(last_day, '%y%m%d'),
                        'Number_of_lines': df_cam_len}
                 shape_db_info.append(row)
-                del df_cam
+
         shape_db_info = pd.DataFrame(shape_db_info)
         shape_db_info.to_csv(os.path.join(cwd_path, 'db', 'shape_db_info.csv'), index=False)
 
