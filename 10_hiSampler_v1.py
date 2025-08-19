@@ -11,6 +11,8 @@ import os
 # Deleting an entire branch of the file system along with the contents
 import shutil
 
+from funcs_TxtUI_request_app_description import cleanup_mei_folders
+
 '''
 class Ui_Dialog from Qt designer file. To get it, use this code:
 cmd(PyCharm terminal): pyuic5.exe -x file.ui -o file.py
@@ -918,6 +920,10 @@ class UI(QDialog):
         tel = '<FONT COLOR=#b96902>5469 5400 2720 6935</FONT>'
         thanks_text = 'Благодарность на карту Сбербанк: '
         self.label_wishes_thanks.setText(thanks_text + tel + ' Алексей')
+
+    def closeEvent(self, event):
+        cleanup_mei_folders()  # Очистка перед закрытием
+        event.accept()  # Подтверждаем закрытие
 
 
 def main():
