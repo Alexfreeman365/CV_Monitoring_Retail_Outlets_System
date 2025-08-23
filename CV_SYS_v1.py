@@ -76,10 +76,12 @@ if __name__ == '__main__':
             while True:
                 for cam_name in sorted(cam_names):
                     cam_shapes_db_len = 0
-                    if os.path.exists(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv')):
-                        df = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
-                        cam_shapes_db_len = len(df)
-                        del df
+                    cam_shapes_path = os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv')
+                    if os.path.exists(cam_shapes_path):
+                        with open(cam_shapes_path, 'r') as f:
+                            for _ in f:
+                                cam_shapes_db_len += 1
+                        cam_shapes_db_len -= 1  # Вычитаем заголовок
 
                     shape_detection(shape_detector, cam_shapes_db_len, ip_cam_data_paths_dict[cam_name],
                                     cam_name, cam_names)
@@ -101,7 +103,7 @@ if __name__ == '__main__':
                     vis_count_noseller_pipeline(cam_name, ip_cam_data_paths_dict[cam_name])
         save_shape_db_info(cam_names)
 
-        log_event(cwd_path, app_name, 'sys', 'Starting the system')
+        log_event(cwd_path, app_name, 'sys', 'Stopping the system')
         kill_hiFTPCleaner_CVloadAntifreeze(process) #4
 
 
