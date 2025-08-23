@@ -110,10 +110,9 @@ DESCRIPTION = (
 
 
 if __name__ == '__main__':
-    # cwd_path = 'L:\Active_pjs\RG\cams_media'
     cwd_path = os.getcwd()
     parent_dir = os.path.dirname(cwd_path)
-    app_name = '11_FTPDataAlert'    
+    app_name = os.path.basename(sys.executable).split('.')[0]
 
     cam_work_hours = {d['cam_name']: d['work_hours']
                       for d in load_camconfig(parent_dir)}
@@ -132,70 +131,81 @@ if __name__ == '__main__':
     total_sended = []
     first_launch = True
 
-    while True:
-        try:
-            ftp = ftplib.FTP(ftp_host)
-            ftp.login(ftp_user, ftp_pas)
-            cam_names = sorted(ftp.nlst())
+    try:
+        while True:
+            try:
+                ftp = ftplib.FTP(ftp_host)
+                ftp.login(ftp_user, ftp_pas)
+                cam_names = sorted(ftp.nlst())
 
-            if first_launch:
-                send_message(chat_id, f'Программа для контроля {len(cam_names)} камер '
-                                      f'({", ".join(cam_names)}) запущена успешно')
-                first_launch = False
+                if first_launch:
+                    send_message(chat_id, f'Программа для контроля {len(cam_names)} камер '
+                                          f'({", ".join(cam_names)}) запущена успешно')
+                    first_launch = False
 
-            cur_dt = datetime.today()
-            all_work_hours = (h for i in cam_work_hours.values() for h in eval(i))
-            sorted_hours = sorted(all_work_hours)
-            min_hour, max_hour = sorted_hours[0], sorted_hours[-1]
-            min_work_hour_dt = cur_dt.replace(hour=min_hour, minute=0, second=0)
-            max_work_hour_dt = cur_dt.replace(hour=max_hour, minute=10, second=0)
+                cur_dt = datetime.today()
+                all_work_hours = (h for i in cam_work_hours.values() for h in eval(i))
+                sorted_hours = sorted(all_work_hours)
+                min_hour, max_hour = sorted_hours[0], sorted_hours[-1]
+                min_work_hour_dt = cur_dt.replace(hour=min_hour, minute=0, second=0)
+                max_work_hour_dt = cur_dt.replace(hour=max_hour, minute=10, second=0)
 
-            if min_work_hour_dt <= cur_dt <= max_work_hour_dt:
-                for cam_name in sorted(cam_work_hours):
-                    if cam_name in cam_names:
-                        start_hour, end_hour = eval(cam_work_hours[cam_name])
-                        start_dt = cur_dt.replace(hour=start_hour, minute=1, second=0)
-                        end_dt = cur_dt.replace(hour=end_hour, minute=0, second=0)
+                if min_work_hour_dt <= cur_dt <= max_work_hour_dt:
+                    for cam_name in sorted(cam_work_hours):
+                        if cam_name in cam_names:
+                            start_hour, end_hour = eval(cam_work_hours[cam_name])
+                            start_dt = cur_dt.replace(hour=start_hour, minute=1, second=0)
+                            end_dt = cur_dt.replace(hour=end_hour, minute=0, second=0)
 
-                        if start_dt <= cur_dt <= end_dt:
-                            last_img_dt = datetime.strptime(get_last_frame(cam_name)[1:13], '%y%m%d%H%M%S')
-                            delta = (cur_dt - last_img_dt).total_seconds()
-                            # print(cam_name, delta)
-                            if delta > 180 and cam_name not in no_connection:  # 180
-                                no_connection[cam_name] = last_img_dt
-                                msg = f'{cam_name.upper()} XXX Не в сети больше трех минут ¯\_(ツ)_/¯'
-                                send_message(chat_id, msg)
-                                if ledger_flag:
-                                    log_event(cwd_path, app_name, cam_name, 'disconnected over 3 min')
-                            if cam_name in no_connection and delta < 60:  # 60
-                                lost_delta = (last_img_dt - no_connection[cam_name]).total_seconds()
-                                del no_connection[cam_name]
-                                lost_time = seconds_to_hhmmss(int(lost_delta))
-                                msg = f'{cam_name.upper()} Ok - В сети! - {lost_time}'
-                                send_message(chat_id, msg)
-                                if ledger_flag:
-                                    log_event(cwd_path, app_name, cam_name, f'connected >>> lost {lost_time}')
-                            if cam_name in total_sended:
-                                total_sended.remove(cam_name)
+                            if start_dt <= cur_dt <= end_dt:
+                                last_img_dt = datetime.strptime(get_last_frame(cam_name)[1:13], '%y%m%d%H%M%S')
+                                delta = (cur_dt - last_img_dt).total_seconds()
+                                # print(cam_name, delta)
+                                if delta > 180 and cam_name not in no_connection:  # 180
+                                    no_connection[cam_name] = last_img_dt
+                                    msg = f'{cam_name.upper()} XXX Не в сети больше трех минут ¯\_(ツ)_/¯'
+                                    send_message(chat_id, msg)
+                                    if ledger_flag:
+                                        log_event(cwd_path, app_name, cam_name, 'disconnected over 3 min')
+                                if cam_name in no_connection and delta < 60:  # 60
+                                    lost_delta = (last_img_dt - no_connection[cam_name]).total_seconds()
+                                    del no_connection[cam_name]
+                                    lost_time = seconds_to_hhmmss(int(lost_delta))
+                                    msg = f'{cam_name.upper()} Ok - В сети! - {lost_time}'
+                                    send_message(chat_id, msg)
+                                    if ledger_flag:
+                                        log_event(cwd_path, app_name, cam_name, f'connected >>> lost {lost_time}')
+                                if cam_name in total_sended:
+                                    total_sended.remove(cam_name)
 
-                        elif (end_dt.replace(hour=end_hour, minute=3, second=0)
-                              < cur_dt and cam_name not in total_sended):
-                            last_img_dt = datetime.strptime(get_last_frame(cam_name)[1:13], '%y%m%d%H%M%S')
-                            if last_img_dt.day == cur_dt.day:
-                                estimated_num_frames = (end_hour - start_hour) * 3600 // 45
-                                total_not_empty_frames = last_day_total(cam_name)
-                                msg = f'{cam_name.upper()} Общее кол-во кадров за день: ' \
-                                      f'из {estimated_num_frames} в наличии {total_not_empty_frames}'
-                                send_message(chat_id, msg)
-                                total_sended.append(cam_name)
-                            else:
-                                total_sended.clear()
-                ftp.quit()
-        except Exception as error:
-            if ledger_flag:
-                log_event(cwd_path, app_name, 'error', type(error).__name__)
-            time.sleep(5)
-        # print(no_connection)
-        time.sleep(45)  # 45
+                            elif (end_dt.replace(hour=end_hour, minute=3, second=0)
+                                  < cur_dt and cam_name not in total_sended):
+                                last_img_dt = datetime.strptime(get_last_frame(cam_name)[1:13], '%y%m%d%H%M%S')
+                                if last_img_dt.day == cur_dt.day:
+                                    estimated_num_frames = (end_hour - start_hour) * 3600 // 45
+                                    total_not_empty_frames = last_day_total(cam_name)
+                                    msg = f'{cam_name.upper()} Общее кол-во кадров за день: ' \
+                                          f'из {estimated_num_frames} в наличии {total_not_empty_frames}'
+                                    send_message(chat_id, msg)
+                                    total_sended.append(cam_name)
+                                else:
+                                    total_sended.clear()
+                    ftp.quit()
+            except Exception as error:
+                if ledger_flag:
+                    log_event(cwd_path, app_name, 'error', type(error).__name__)
+                time.sleep(5)
+            # print(no_connection)
+            time.sleep(45)  # 45
+
+    except KeyboardInterrupt:
+        cleanup_mei_folders()  # Очистка при Ctrl+C
+        sys.exit(0)
+    except SystemExit:
+        cleanup_mei_folders()  # Очистка при sys.exit()
+        raise
+    except Exception as e:
+        cleanup_mei_folders()  # Очистка при неожиданных ошибках
+        raise
 
 
