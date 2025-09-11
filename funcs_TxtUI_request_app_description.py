@@ -55,8 +55,8 @@ def log_event(cwd_path, app_name, name, message):
         pass
 
 
-def cleanup_mei_folders():
-    hi_temp_path = os.path.join(os.getcwd(), "hi_temp")
+def cleanup_mei_folders(cwd_path=os.getcwd()):
+    hi_temp_path = os.path.join(cwd_path, "hi_temp")
     lock_file = os.path.join(hi_temp_path, "cleanup.lock")
 
     if os.path.exists(hi_temp_path):
