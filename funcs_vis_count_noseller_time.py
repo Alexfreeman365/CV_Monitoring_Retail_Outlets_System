@@ -1,7 +1,29 @@
 import numpy as np
+import shutil
 from datetime import datetime, timedelta
 
 from funcs_initializer_camconfig_getcamframe import *
+
+
+def backup_db(cwd_path):
+    if os.path.exists(os.path.join(cwd_path, 'db_backups')):
+        pass
+    else:
+        os.mkdir(os.path.join(cwd_path, 'db_backups'))
+
+    today = '20' + (datetime.now()).strftime('%y%m%d')
+
+    if os.path.exists(os.path.join(cwd_path, 'db_backups', today)):
+        pass
+    else:
+        try:
+            shutil.copytree(os.path.join(cwd_path, 'db'), os.path.join(cwd_path, 'db_backups', today))
+        except:
+            pass
+
+    # if len(os.listdir(os.path.join(cwd_path, 'db_backups'))) > 30:
+    #     oldest_day = os.listdir(os.path.join(cwd_path, 'db_backups'))[0]
+    #     shutil.rmtree(os.path.join(cwd_path, 'db_backups', oldest_day))
 
 
 def base_columns_hours(cam_name):
@@ -307,3 +329,5 @@ def vis_count_noseller_pipeline(cam_name, ip_cam_data_path, cwd_path=os.getcwd()
         else:
             noSeller_time_cam.to_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_noSeller_time.csv'),
                                      index=False)
+
+        backup_db(cwd_path)
