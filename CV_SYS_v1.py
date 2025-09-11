@@ -1,31 +1,10 @@
 from keras.models import load_model
-import shutil
 import subprocess, psutil
+import telebot
 
 from funcs_CV import *
 from funcs_vis_count_noseller_time import vis_count_noseller_pipeline
-from funcs_TxtUI_request_app_description import log_event
-
-
-def backup_db():
-    if os.path.exists(os.path.join(cwd_path, 'db_backups')):
-        pass
-    else:
-        os.mkdir(os.path.join(cwd_path, 'db_backups'))
-
-    today = '20' + (datetime.now()).strftime('%y%m%d')
-
-    if os.path.exists(os.path.join(cwd_path, 'db_backups', today)):
-        pass
-    else:
-        try:
-            shutil.copytree(os.path.join(cwd_path, 'db'), os.path.join(cwd_path, 'db_backups', today))
-        except:
-            pass
-
-    # if len(os.listdir(os.path.join(cwd_path, 'db_backups'))) > 30:
-    #     oldest_day = os.listdir(os.path.join(cwd_path, 'db_backups'))[0]
-    #     shutil.rmtree(os.path.join(cwd_path, 'db_backups', oldest_day))
+from funcs_TxtUI_request_app_description import *
 
 
 def start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=True):
@@ -46,13 +25,27 @@ def start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=True):
     return [p for p in process if p]
 
 
-def kill_hiFTPCleaner_CVloadAntifreeze(process):
+def terminate_hiFTPCleaner_CVloadAntifreeze(process):
     for proc in process:
         try:
             pobj = psutil.Process(proc.pid)
             for c in pobj.children(recursive=True):
-                c.kill()
-            pobj.kill()
+                try:
+                    c.terminate()
+                except psutil.NoSuchProcess:
+                    continue
+
+            pobj.terminate()
+
+            try:
+                pobj.wait(timeout=5)
+            except (psutil.TimeoutExpired, psutil.NoSuchProcess):
+
+                try:
+                    pobj.kill()
+                except psutil.NoSuchProcess:
+                    continue
+
         except psutil.NoSuchProcess:
             continue
 
@@ -60,9 +53,16 @@ def kill_hiFTPCleaner_CVloadAntifreeze(process):
 if __name__ == '__main__':
     cwd_path = os.getcwd()
     app_name = 'CV_SYS'
+
+    request = f"Введите данные:\n" \
+              f"bot_token->:\nchat_id->:\nЖурнал событий->: Нет\n{'-' * 30}"
+    data = request_app_description(app_name, cwd_path, request, '---')
+    bot_token, chat_id, ledger_msg = data
+    chat_id = int(chat_id)
+    bot = telebot.TeleBot(bot_token)
+
     ip_cam_data_paths_dict, cam_names = initializer()
     process = start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=False) #1
-
     time.sleep(60 * 20) #2
 
     try:
@@ -85,12 +85,11 @@ if __name__ == '__main__':
 
                     shape_detection(shape_detector, cam_shapes_db_len, ip_cam_data_paths_dict[cam_name],
                                     cam_name, cam_names)
-
-                    backup_db()
                     time.sleep(5)
         except Exception as error:
             log_event(cwd_path, app_name, 'error', type(error).__name__)
-            kill_hiFTPCleaner_CVloadAntifreeze(process) #3
+            terminate_hiFTPCleaner_CVloadAntifreeze(process) #3
+            bot.send_message(chat_id, 'CV_SYS >>> Ошибка в основном pipeline')
             raise error
 
     except KeyboardInterrupt:
@@ -104,6 +103,6 @@ if __name__ == '__main__':
         save_shape_db_info(cam_names)
 
         log_event(cwd_path, app_name, 'sys', 'Stopping the system')
-        kill_hiFTPCleaner_CVloadAntifreeze(process) #4
-
+        terminate_hiFTPCleaner_CVloadAntifreeze(process) #4
+        cleanup_mei_folders(os.path.join(cwd_path, 'cams_media'))
 
