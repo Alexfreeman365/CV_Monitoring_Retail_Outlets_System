@@ -3,24 +3,24 @@ import pandas as pd
 from PIL import Image
 
 
-def initializer():
+def initializer(cwd_path=os.getcwd()):
     def data_condition(item):
         return (len(str(item).split('_')) > 1) & (str(item).split('_')[-1] in ['images', 'photos'])
 
-    media_path = os.path.join(os.getcwd(), 'cams_media')
+    media_path = os.path.join(cwd_path, 'cams_media')
     ip_cam_data_folders = [item for item in os.listdir(media_path) if data_condition(item)]
     ip_cam_data_folders = sorted(ip_cam_data_folders, reverse=True)
     ip_cam_data_paths = [os.path.join(media_path, item) for item in ip_cam_data_folders]
     cam_names = ['_'.join(str(item).split('_')[:-1]) for item in ip_cam_data_folders]
     ip_cam_data_paths_dict = dict(zip(cam_names, ip_cam_data_paths))
 
-    if os.path.exists(os.path.join(os.getcwd(), 'db')):
+    if os.path.exists(os.path.join(cwd_path, 'db')):
         pass
     else:
-        os.mkdir(os.path.join(os.getcwd(), 'db'))
+        os.mkdir(os.path.join(cwd_path, 'db'))
 
-    if os.path.exists(os.path.join(os.getcwd(), 'db', 'camconfig.csv')):
-        camconfig = load_camconfig()
+    if os.path.exists(os.path.join(cwd_path, 'db', 'camconfig.csv')):
+        camconfig = load_camconfig(cwd_path)
         for cam_name in cam_names:
             frame = get_cam_frame(cam_name, ip_cam_data_paths_dict)
             if cam_name not in [cam_set['cam_name'] for cam_set in camconfig]:
@@ -33,7 +33,7 @@ def initializer():
                     'vis_count_alg': (2, 2)
                 })
         camconfig = [cam_set for cam_set in camconfig if cam_set['cam_name'] in cam_names]
-        save_camconfig(camconfig)
+        save_camconfig(camconfig, cwd_path)
 
     else:
         camconfig = []
@@ -47,7 +47,7 @@ def initializer():
                 'work_hours': (10, 21),
                 'vis_count_alg': (2, 2)
             })
-        save_camconfig(camconfig)
+        save_camconfig(camconfig, cwd_path)
     return ip_cam_data_paths_dict, cam_names
 
 
@@ -59,9 +59,9 @@ def load_camconfig(path=os.getcwd()):
     return camconfig
 
 
-def save_camconfig(camconfig):
+def save_camconfig(camconfig, cwd_path=os.getcwd()):
     camconfig = pd.DataFrame(camconfig)
-    camconfig.to_csv(os.path.join(os.getcwd(), 'db', 'camconfig.csv'), index=False)
+    camconfig.to_csv(os.path.join(cwd_path, 'db', 'camconfig.csv'), index=False)
 
 
 def get_cam_frame(cam_name, ip_cam_data_paths_dict):
