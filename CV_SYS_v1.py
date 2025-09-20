@@ -1,9 +1,9 @@
 from keras.models import load_model
 import subprocess, psutil
 import telebot
-
+from ultralytics import YOLO
 from funcs_CV import *
-from funcs_vis_count_noseller_time import vis_count_noseller_pipeline
+from funcs_vis_count_noseller_time import *
 from funcs_TxtUI_request_app_description import *
 
 
@@ -61,13 +61,12 @@ if __name__ == '__main__':
     chat_id = int(chat_id)
     bot = telebot.TeleBot(bot_token)
 
-    ip_cam_data_paths_dict, cam_names = initializer()
+    ip_cam_data_paths_dict, cam_names = initializer(cwd_path)
     process = start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=False) #1
-    time.sleep(60 * 20) #2
+    time.sleep(60 * 30) #2
 
     try:
-        shape_detector = load_model(os.path.join(cwd_path, 'venv', 'neural_network_models',
-                                                 'efficientdet_d5_coco17_tpu-32', 'saved_model'))
+        shape_detector = YOLO(os.path.join(cwd_path, 'venv', 'neural_network_models', 'yolov10x.pt'))
 
         print('The system is loaded')
         log_event(cwd_path, app_name, 'sys', 'Starting the system')
@@ -84,7 +83,7 @@ if __name__ == '__main__':
                         cam_shapes_db_len -= 1  # Вычитаем заголовок
 
                     shape_detection(shape_detector, cam_shapes_db_len, ip_cam_data_paths_dict[cam_name],
-                                    cam_name, cam_names)
+                                    cam_name, cam_names, cwd_path)
                     time.sleep(5)
         except Exception as error:
             log_event(cwd_path, app_name, 'error', type(error).__name__)
@@ -97,10 +96,11 @@ if __name__ == '__main__':
             camconfig = load_camconfig()
             cam_set = [cam_set for cam_set in camconfig if cam_set['cam_name'] == cam_name][0]
             hour_end = cam_set['work_hours'].split(',')[1][1:-1]
-            if (datetime.now()).strftime('%H') >= hour_end: #'0'
+            if (datetime.now()).strftime('%H') >= hour_end: # '0'
                 if not cam_name[-1].isdigit() or cam_name[-1] == '1':
                     vis_count_noseller_pipeline(cam_name, ip_cam_data_paths_dict[cam_name])
         save_shape_db_info(cam_names)
+        backup_db(cwd_path)
 
         log_event(cwd_path, app_name, 'sys', 'Stopping the system')
         terminate_hiFTPCleaner_CVloadAntifreeze(process) #4
