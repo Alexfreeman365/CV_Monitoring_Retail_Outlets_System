@@ -11,11 +11,9 @@ import shutil
 import pickle
 import pandas as pd
 import numpy as np
-from PIL import Image, ImageFont, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
-
-from funcs_TxtUI_request_app_description import cleanup_mei_folders
 
 
 class Ui_Dialog(object):
@@ -1224,10 +1222,28 @@ class ParseThread(QThread):
                 t2 = tuple(np.array(l2, dtype='int'))
                 return [t0, t1, t2]
 
-        def rectangle_on_shape(img, shape_location):
+        def rectangle_on_shape(img, shape_location, star_position='left'):
             y1, y2, x1, x2 = shape_location
             draw = ImageDraw.Draw(img)
-            return draw.rectangle(((x1, y1), (x2, y2)), outline='#ffff14', width=3)
+
+            if star_position == 'right':
+                # Желтый прямоугольник и звездочка справа
+                draw.rectangle(((x1, y1), (x2, y2)), outline='#ffff14', width=3)
+                draw.ellipse([(x2 - 20, y1 + 2), (x2 - 5, y1 + 17)], fill='#ffff14', outline='#ffff14')
+                try:
+                    font = ImageFont.truetype("arial.ttf", 12)
+                    draw.text((x2 - 16, y1 + 3), "*", fill='#000000', font=font)
+                except:
+                    draw.text((x2 - 16, y1 + 3), "*", fill='#000000')
+            else:
+                # Красный прямоугольник и звездочка слева
+                draw.rectangle(((x1, y1), (x2, y2)), outline='red', width=3)
+                draw.ellipse([(x1 + 2, y1 + 2), (x1 + 17, y1 + 17)], fill='red', outline='red')
+                try:
+                    font = ImageFont.truetype("arial.ttf", 12)
+                    draw.text((x1 + 6, y1 + 3), "*", fill='white', font=font)
+                except:
+                    draw.text((x1 + 6, y1 + 3), "*", fill='white')
 
         def show_zone(img, zone_coords):
             if len(zone_coords) == 4:
