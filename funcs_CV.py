@@ -1,5 +1,4 @@
 import cv2
-import tensorflow as tf
 import time
 from tqdm import tqdm
 import numpy as np
@@ -146,8 +145,64 @@ def plus_random_8(image_name):
     return date_time[:14] + str(random_num)
 
 
+def is_duplicate_detection(new_box, existing_boxes, similarity_threshold=0.9, max_pixel_diff=20):
+    """
+    Определяет, является ли новая детекция дубликатом существующей.
+    Возвращает True если это дубликат, False если это новый объект.
+    """
+    if not existing_boxes:
+        return False
+
+    new_x1, new_y1, new_x2, new_y2 = new_box
+    new_area = (new_x2 - new_x1) * (new_y2 - new_y1)
+
+    for existing_box in existing_boxes:
+        ex_x1, ex_y1, ex_x2, ex_y2 = existing_box
+        ex_area = (ex_x2 - ex_x1) * (ex_y2 - ex_y1)
+
+        # Проверяем центр bounding box'а
+        new_center_x = (new_x1 + new_x2) / 2
+        new_center_y = (new_y1 + new_y2) / 2
+        ex_center_x = (ex_x1 + ex_x2) / 2
+        ex_center_y = (ex_y1 + ex_y2) / 2
+
+        # Расстояние между центрами
+        center_distance = ((new_center_x - ex_center_x) ** 2 +
+                           (new_center_y - ex_center_y) ** 2) ** 0.5
+
+        # Проверяем размеры bounding box'ов
+        width_diff = abs((new_x2 - new_x1) - (ex_x2 - ex_x1))
+        height_diff = abs((new_y2 - new_y1) - (ex_y2 - ex_y1))
+
+        # Проверяем перекрытие по IoU (Intersection over Union)
+        x1 = max(new_x1, ex_x1)
+        y1 = max(new_y1, ex_y1)
+        x2 = min(new_x2, ex_x2)
+        y2 = min(new_y2, ex_y2)
+
+        intersection = max(0, x2 - x1) * max(0, y2 - y1)
+        union = new_area + ex_area - intersection
+        iou = intersection / union if union > 0 else 0
+
+        # Критерии для определения дубликата:
+        # 1. Высокое IoU (> 0.8) ИЛИ
+        # 2. Близкие центры (< 20 пикселей) И похожие размеры
+        is_duplicate = (
+                (iou > similarity_threshold) or
+                (center_distance < max_pixel_diff and
+                 width_diff < max_pixel_diff and
+                 height_diff < max_pixel_diff and
+                 iou > 0.6)
+        )
+
+        if is_duplicate:
+            return True
+
+    return False
+
+
 def shape_detection(shape_detector, total_len_shapes_db, images_path, cam_name, cam_names, cwd_path=os.getcwd()):
-    last_day_processed_imgs = load_last_day_processed_imgs(cam_name)
+    last_day_processed_imgs = load_last_day_processed_imgs(cam_name, cwd_path)
     if len(last_day_processed_imgs) != 0:
         last_seen_day = last_day_processed_imgs[0][:6]
     else:
@@ -162,19 +217,20 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path, cam_name, 
                     day_cam_imgs.append(file_name)
             cam_imgs_dict[day] = day_cam_imgs
 
-    shapes_locs = []
     last_day = str()
     for day in cam_imgs_dict.keys():
+        shapes_locs = []
+
         last_day = day[2:]
 
         if (last_seen_day != last_day and
                 (not cam_name[-1].isdigit() or cam_name[-1] == '1') and
                 os.path.exists(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))):
-            vis_count_noseller_pipeline(cam_name, images_path)
+            vis_count_noseller_pipeline(cam_name, images_path, cwd_path)
             save_shape_db_info(cam_names)
 
-        countdown = 0
-        for image_name in tqdm(cam_imgs_dict[day]):
+        # countdown = 0 # Визуализация отсчета при тестах
+        for image_name in tqdm(cam_imgs_dict[day]):  # tqdm
             if (image_name not in last_day_processed_imgs) & (get_first_part(image_name) != 'Thumbs'):
 
                 img_size = os.path.getsize(os.path.join(images_path, day, image_name))
@@ -182,8 +238,8 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path, cam_name, 
                     time.sleep(2)
 
                 try:
+                    # ЗДЕСЬ ВАЖНО: YOLO принимает BGR (cv2.imread), конвертация в RGB не нужна!
                     img = cv2.imread(os.path.join(images_path, day, image_name))
-                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 except:
                     print('Problem with: ', image_name, cam_name)
                     if get_first_part(image_name) != 'Thumbs':
@@ -192,49 +248,72 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path, cam_name, 
                         log_event(cwd_path, 'CV_SYS', 'sys', 'Starting the system')
                     continue
 
-                inputTensor = tf.convert_to_tensor(img_rgb, dtype=tf.uint8)
-                inputTensor = inputTensor[tf.newaxis, ...]
+                results = shape_detector(img, verbose=False)  # verbose=False чтобы не выводить прогрес в консоль
 
-                detections = shape_detector(inputTensor)
-                bboxs = detections['detection_boxes'][0].numpy()
-                classIndexes = detections['detection_classes'][0].numpy().astype(np.int32)
-                classScores = detections['detection_scores'][0].numpy()
-
+                # YOLO уже применяет NMS, поэтому просто берем результат
+                result = results[0]  # берем первый (и единственный) результат для одного изображения
                 imH, imW, imC = img.shape
-                bboxIdx = tf.image.non_max_suppression(bboxs, classScores, max_output_size=50,
-                                                       iou_threshold=0.5, score_threshold=0.5)
-                if len(bboxIdx) != 0:
 
-                    for i in bboxIdx:
-                        bbox = tuple(bboxs[i].tolist())
-                        # classConfidence = round(100*classScores[i])
-                        classIndex = classIndexes[i]
+                if result.boxes is not None:
+                    boxes = result.boxes.xyxy.cpu().numpy()  # координаты в формате [x1, y1, x2, y2]
+                    classIndexes = result.boxes.cls.cpu().numpy().astype(np.int32)  # классы
+                    classScores = result.boxes.conf.cpu().numpy()  # уверенности
 
-                        if classIndex == 1:
-                            ymin, xmin, ymax, xmax = bbox
+                    # Фильтруем только людей (класс 0 в COCO для YOLO)
+                    person_indices = [i for i, cls in enumerate(classIndexes) if cls == 0 and classScores[i] >= 0.5]
 
-                            xmin, xmax, ymin, ymax = (xmin * imW, xmax * imW, ymin * imH, ymax * imH)
-                            xmin, xmax, ymin, ymax = int(xmin), int(xmax), int(ymin), int(ymax)
-                            shape_location = [ymin, ymax, xmin, xmax]
-                            square_of_shape = (ymax - ymin) * (xmax - xmin)
+                    # Список для отслеживания уже обработанных bbox'ов в этом кадре
+                    current_frame_boxes = []
+                    duplicate_count = 0
 
-                            camconfig = load_camconfig()
-                            shape_zone = [cam_set['shape_zone'] for cam_set in camconfig
-                                          if cam_set['cam_name'] == cam_name][0]
-                            shape_alarm = detection_zone_intersection(shape_location, shape_zone)
+                    for i in person_indices:
+                        bbox = boxes[i]
+                        # classConfidence = round(100 * classScores[i])  # если нужен процент
 
-                            face_zone = [cam_set['face_zone'] for cam_set in camconfig
-                                         if cam_set['cam_name'] == cam_name][0]
-                            face_alarm = detection_zone_intersection(shape_location, face_zone)
+                        # Координаты уже в пикселях!
+                        xmin, ymin, xmax, ymax = bbox.astype(int)
 
-                            date_time = plus_random_8(image_name)
-                            new_image_name = date_time + '.jpg'
+                        # Фильтр по минимальному размеру человека (избегаем мелких шумов)
+                        # person_height = ymax - ymin
+                        # person_width = xmax - xmin
+                        # person_area = person_height * person_width
 
-                            shape_loc = {'origin_file_name': image_name, 'uid8': date_time,
-                                         'shape_location': shape_location, 'shape_zone_coords': shape_zone,
-                                         'shape_zone': shape_alarm, 'face_zone_coords': face_zone,
-                                         'face_zone': face_alarm}
-                            shapes_locs.append(shape_loc)
+                        # if person_area < 2000:  # Минимальная площадь в пикселях
+                        # continue  # Пропускаем слишком маленькие объекты
+
+                        # Проверяем на дубликаты в текущем кадре
+                        if is_duplicate_detection([xmin, ymin, xmax, ymax], current_frame_boxes):
+                            duplicate_count += 1
+                            continue  # Пропускаем дубликат
+
+                        # Добавляем в список обработанных
+                        current_frame_boxes.append([xmin, ymin, xmax, ymax])
+
+                        shape_location = [ymin, ymax, xmin, xmax]  # сохраняем ваш формат [y1, y2, x1, x2]
+                        square_of_shape = (ymax - ymin) * (xmax - xmin)
+
+                        camconfig = load_camconfig(cwd_path)
+                        shape_zone = [cam_set['shape_zone'] for cam_set in camconfig
+                                      if cam_set['cam_name'] == cam_name][0]
+                        shape_alarm = detection_zone_intersection(shape_location, shape_zone)
+
+                        face_zone = [cam_set['face_zone'] for cam_set in camconfig
+                                     if cam_set['cam_name'] == cam_name][0]
+                        face_alarm = detection_zone_intersection(shape_location, face_zone)
+
+                        date_time = plus_random_8(image_name)
+                        new_image_name = date_time + '.jpg'
+
+                        shape_loc = {'origin_file_name': image_name, 'uid8': date_time,
+                                     'shape_location': shape_location, 'shape_zone_coords': shape_zone,
+                                     'shape_zone': shape_alarm, 'face_zone_coords': face_zone,
+                                     'face_zone': face_alarm}
+                        shapes_locs.append(shape_loc)
+
+                    # Логирование дубликатов (опционально)
+                    if duplicate_count > 0:
+                        print(f"{cam_name} {image_name}: filtered {duplicate_count} duplicate detections")
+
                 last_day_processed_imgs.append(image_name)
             # countdown += 1
             # print(f'{cam_name}_{day} Processing {int(countdown / (len(cam_imgs_dict[day])) * 100)}%')
@@ -254,5 +333,5 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path, cam_name, 
         last_day_processed_imgs_filtered = [v for v in last_day_processed_imgs if str(v)[:6] >= last_day]
         if len(last_day_processed_imgs_filtered) == 0:
             last_day_processed_imgs_filtered = last_day_processed_imgs
-        save_last_day_processed_imgs(last_day_processed_imgs_filtered, cam_name)
+        save_last_day_processed_imgs(last_day_processed_imgs_filtered, cam_name, cwd_path)
     return
