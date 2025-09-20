@@ -2,7 +2,7 @@ import os
 import sys
 import shutil
 import glob
-import portalocker
+# import portalocker
 import csv
 from datetime import datetime
 import time
@@ -57,40 +57,52 @@ def log_event(cwd_path, app_name, name, message):
 
 def cleanup_mei_folders(cwd_path=os.getcwd()):
     hi_temp_path = os.path.join(cwd_path, "hi_temp")
-    lock_file = os.path.join(hi_temp_path, "cleanup.lock")
 
     if os.path.exists(hi_temp_path):
-        try:
-            # Создаём файл блокировки
-            with portalocker.Lock(lock_file, timeout=0.1,
-                                  flags=portalocker.LOCK_EX | portalocker.LOCK_NB,
-                                  fail_when_locked=False):  # Ждём 0.1 сек
-                current_mei = getattr(sys, '_MEIPASS', None)
-                # Нормализуем путь текущего MEI для точного сравнения
-                current_mei_normalized = os.path.normcase(os.path.abspath(current_mei)) if current_mei else None
+        mei_folders = glob.glob(os.path.join(hi_temp_path, "_MEI*"))
+        for mei_folder in mei_folders:
+            try:
+                if os.path.exists(mei_folder):
+                    shutil.rmtree(mei_folder, ignore_errors=True)
+            except Exception:
+                continue
 
-                mei_folders = glob.glob(os.path.join(hi_temp_path, "_MEI*"))
-                for mei_folder in mei_folders:
-                    # Нормализуем путь для сравнения
-                    mei_folder_normalized = os.path.normcase(os.path.abspath(mei_folder))
-                    if current_mei_normalized and mei_folder_normalized == current_mei_normalized:
-                        continue  # Точно пропускаем свой каталог
-
-                    try:
-                        if os.path.exists(mei_folder):
-                            shutil.rmtree(mei_folder, ignore_errors=True)
-                    except Exception:
-                        continue
-
-        except portalocker.exceptions.LockException:
-            pass  # Другая программа уже выполняет очистку
-        finally:
-            if os.path.exists(lock_file):
-                for _ in range(3):  # 3 попытки удалить lock-файл
-                    try:
-                        os.remove(lock_file)
-                        break
-                    except PermissionError:
-                        time.sleep(0.1)  # Короткая пауза между попытками
-                    except Exception:
-                        break
+# def cleanup_mei_folders(cwd_path=os.getcwd()):
+#     hi_temp_path = os.path.join(cwd_path, "hi_temp")
+#     lock_file = os.path.join(hi_temp_path, "cleanup.lock")
+#
+#     if os.path.exists(hi_temp_path):
+#         try:
+#             # Создаём файл блокировки
+#             with portalocker.Lock(lock_file, timeout=0.1,
+#                                   flags=portalocker.LOCK_EX | portalocker.LOCK_NB,
+#                                   fail_when_locked=False):  # Ждём 0.1 сек
+#                 current_mei = getattr(sys, '_MEIPASS', None)
+#                 # Нормализуем путь текущего MEI для точного сравнения
+#                 current_mei_normalized = os.path.normcase(os.path.abspath(current_mei)) if current_mei else None
+#
+#                 mei_folders = glob.glob(os.path.join(hi_temp_path, "_MEI*"))
+#                 for mei_folder in mei_folders:
+#                     # Нормализуем путь для сравнения
+#                     mei_folder_normalized = os.path.normcase(os.path.abspath(mei_folder))
+#                     if current_mei_normalized and mei_folder_normalized == current_mei_normalized:
+#                         continue  # Точно пропускаем свой каталог
+#
+#                     try:
+#                         if os.path.exists(mei_folder):
+#                             shutil.rmtree(mei_folder, ignore_errors=True)
+#                     except Exception:
+#                         continue
+#
+#         except portalocker.exceptions.LockException:
+#             pass  # Другая программа уже выполняет очистку
+#         finally:
+#             if os.path.exists(lock_file):
+#                 for _ in range(3):  # 3 попытки удалить lock-файл
+#                     try:
+#                         os.remove(lock_file)
+#                         break
+#                     except PermissionError:
+#                         time.sleep(0.1)  # Короткая пауза между попытками
+#                     except Exception:
+#                         break
