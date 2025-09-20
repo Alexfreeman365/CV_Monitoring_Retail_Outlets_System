@@ -26,8 +26,8 @@ def backup_db(cwd_path):
     #     shutil.rmtree(os.path.join(cwd_path, 'db_backups', oldest_day))
 
 
-def base_columns_hours(cam_name):
-    camconfig = load_camconfig()
+def base_columns_hours(cam_name, cwd_path=os.getcwd()):
+    camconfig = load_camconfig(cwd_path)
     cam_set = [cam_set for cam_set in camconfig if cam_set['cam_name'] == cam_name][0]
     hour_start = int(cam_set['work_hours'].split(',')[0][1:])
     hour_end = int(cam_set['work_hours'].split(',')[1][:-1])
@@ -52,6 +52,7 @@ def find_new_shapes(cam_name, last_cam_visitors_day, camconfig, cwd_path=os.getc
 
     if not cam_name[-1].isdigit():
         cam_shapes = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
+        cam_shapes = cam_shapes.drop_duplicates(keep='first')
         cam_shapes = cam_shapes.sort_values('origin_file_name')
         cam_shapes = cam_shapes.reset_index(drop=True)
         cam_shapes.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'), index=False)
@@ -62,6 +63,7 @@ def find_new_shapes(cam_name, last_cam_visitors_day, camconfig, cwd_path=os.getc
         new_shapes = pd.DataFrame()
         for cam_name in group:
             cam_shapes = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
+            cam_shapes = cam_shapes.drop_duplicates(keep='first')
             cam_shapes = cam_shapes.sort_values('origin_file_name')
             cam_shapes = cam_shapes.reset_index(drop=True)
             cam_shapes.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'), index=False)
@@ -75,8 +77,8 @@ def find_new_shapes(cam_name, last_cam_visitors_day, camconfig, cwd_path=os.getc
     return new_shapes, str_next_cam_visitors_day
 
 
-def visitors_counting(cam_name, new_shapes, date, mean_threshold, window_next, step_of_frames=1):
-    columns, hour_start, hour_end = base_columns_hours(cam_name)
+def visitors_counting(cam_name, new_shapes, date, mean_threshold, window_next, step_of_frames=1, cwd_path=os.getcwd()):
+    columns, hour_start, hour_end = base_columns_hours(cam_name, cwd_path)
     if len(new_shapes) != 0:
         new_shapes = new_shapes[new_shapes['cam_name'] == cam_name]
         shapes = new_shapes[new_shapes['shape_zone'] == 1]
@@ -178,10 +180,11 @@ def visitors_counting(cam_name, new_shapes, date, mean_threshold, window_next, s
     return visitors
 
 
-def noSeller_time(cam_name, new_shapes, date, absence_threshold=10):
+def noSeller_time(cam_name, new_shapes, date, absence_threshold=10, cwd_path=os.getcwd()):
     # Get the standard hours for the specific outlet camera
-    columns, hour_start, hour_end = base_columns_hours(cam_name)
+    columns, hour_start, hour_end = base_columns_hours(cam_name, cwd_path)
     columns = columns[:-1]  # Drop 's' ('source') column
+
     if len(new_shapes) != 0:
         shapes = new_shapes[new_shapes['shape_zone'] == 1]
 
@@ -217,7 +220,7 @@ def noSeller_time(cam_name, new_shapes, date, absence_threshold=10):
             full_ones['dt_delta'] = full_ones['dt'] - full_ones['dt_shift']
             full_ones['minutes'] = full_ones['dt_delta'].dt.seconds / 60
 
-            # Сompare with the threshold
+            # Compare with the threshold
             full_ones['thresholded'] = round(
                 full_ones['minutes'].where(full_ones['minutes'] >= absence_threshold, 0)).astype('int')
             full_ones['thresholded_rshift'] = full_ones['thresholded'].shift(-1, fill_value=0)
@@ -233,18 +236,37 @@ def noSeller_time(cam_name, new_shapes, date, absence_threshold=10):
                     if (val - 60) == 1:  # Accounting for rounding inaccuracies
                         full_no_seller_time.iloc[0, i + 2] = 0
                     else:
-                        val_over2 = full_no_seller_time.iloc[0, i+2]
-                        full_no_seller_time.iloc[0, i+2] = (val - 60) + val_over2
+                        val_over2 = full_no_seller_time.iloc[0, i + 2]
+                        full_no_seller_time.iloc[0, i + 2] = (val - 60) + val_over2
                     full_no_seller_time.iloc[0, i + 1] = 60
             full_no_seller_time = full_no_seller_time.iloc[:, :-1]
+
+            # ДОБАВЛЯЕМ ОБРАБОТКУ УТРЕННЕГО ОПОЗДАНИЯ
+            # Определяем время открытия магазина
+            opening_time = datetime.strptime(date + str(hour_start).zfill(2), '%y%m%d%H')
+
+            # Находим первое появление продавца
+            first_appearance = df_ones['dt'].min()
+
+            # Вычисляем опоздание в минутах
+            if first_appearance > opening_time:
+                late_minutes = (first_appearance - opening_time).total_seconds() / 60
+                # Если опоздание превышает порог, добавляем его к часу открытия
+                if late_minutes > absence_threshold:
+                    opening_hour = str(hour_start)
+                    if opening_hour in full_no_seller_time.columns:
+                        full_no_seller_time[opening_hour] = full_no_seller_time[opening_hour] + int(late_minutes)
+                    else:
+                        full_no_seller_time[opening_hour] = int(late_minutes)
 
             full_no_seller_time['sum'] = full_no_seller_time.iloc[:, 1:12].sum(axis=1)
             full_no_seller_time.columns.name = None
             full_no_seller_time['date'] = pd.to_datetime(full_no_seller_time['date'], format='%y%m%d')
 
             # Use the integer type for better human understanding
-            int_columns = {c: 'int' for c in full_no_seller_time.columns[1:]}
+            int_columns = {c: 'int' for c in full_no_seller_time.columns if c != 'date'}
             full_no_seller_time = full_no_seller_time.astype(int_columns)
+
         else:
             # If there is no data for the day, then create a row filled with zeros
             hour_60_values = np.full(hour_end - hour_start, 60)
@@ -253,7 +275,6 @@ def noSeller_time(cam_name, new_shapes, date, absence_threshold=10):
             length = len(hour_60_values)
             full_no_seller_time = pd.DataFrame(data=hour_60_values.reshape(1, length), columns=columns[1:])
             full_no_seller_time['date'] = datetime.strptime(date, '%y%m%d')
-            full_no_seller_time['date'] = full_no_seller_time['date'].astype('str')
             full_no_seller_time = full_no_seller_time[columns]
     else:
         # If there is no data for the day, then create a row filled with zeros
@@ -263,7 +284,6 @@ def noSeller_time(cam_name, new_shapes, date, absence_threshold=10):
         length = len(hour_60_values)
         full_no_seller_time = pd.DataFrame(data=hour_60_values.reshape(1, length), columns=columns[1:])
         full_no_seller_time['date'] = datetime.strptime(date, '%y%m%d')
-        full_no_seller_time['date'] = full_no_seller_time['date'].astype('str')
         full_no_seller_time = full_no_seller_time[columns]
 
     return full_no_seller_time
@@ -284,7 +304,7 @@ def add_photos_to_noSeller(noSeller_time_cam, ip_cam_data_path):
 def vis_count_noseller_pipeline(cam_name, ip_cam_data_path, cwd_path=os.getcwd()):
     print(f'{short_name(cam_name)} camera visitors_counting and noSeller algorithms in processing')
 
-    camconfig = load_camconfig()
+    camconfig = load_camconfig(cwd_path)
     cam_set = [cam_set for cam_set in camconfig if cam_set['cam_name'] == cam_name][0]
     mean_threshold = int(cam_set['vis_count_alg'].split(',')[0][1:])
     window_next = int(cam_set['vis_count_alg'].split(',')[1][1:-1])
@@ -298,7 +318,7 @@ def vis_count_noseller_pipeline(cam_name, ip_cam_data_path, cwd_path=os.getcwd()
         last_cam_visitors_day = datetime.strptime(last_cam_visitors_day, '%y%m%d') - timedelta(days=1)
         last_cam_visitors_day = datetime.strftime(last_cam_visitors_day, '%y%m%d')
 
-    new_shapes, date = find_new_shapes(cam_name, last_cam_visitors_day, camconfig)
+    new_shapes, date = find_new_shapes(cam_name, last_cam_visitors_day, camconfig, cwd_path)
     last_day_processed_imgs = load_last_day_processed_imgs(cam_name)
     if len(last_day_processed_imgs) != 0:
         last_seen_day = last_day_processed_imgs[0][:6]
@@ -308,13 +328,14 @@ def vis_count_noseller_pipeline(cam_name, ip_cam_data_path, cwd_path=os.getcwd()
     if last_seen_day == date:
         visitors_pvt_cam = visitors_counting(cam_name, new_shapes, date,
                                              mean_threshold=mean_threshold,
-                                             window_next=window_next)
+                                             window_next=window_next,
+                                             cwd_path=cwd_path)
 
         if cam_name == 'tlt' and len(new_shapes) != 0:
             new_shapes = dt_slice_shape_df(new_shapes, '231223',
                                            new_shapes.iloc[-1]['origin_file_name'][:6]).copy()
 
-        noSeller_time_cam = noSeller_time(cam_name, new_shapes, date)
+        noSeller_time_cam = noSeller_time(cam_name, new_shapes, date, absence_threshold=10, cwd_path=cwd_path)
         noSeller_time_cam = add_photos_to_noSeller(noSeller_time_cam, ip_cam_data_path)
 
         if os.path.exists(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv')):
@@ -329,5 +350,3 @@ def vis_count_noseller_pipeline(cam_name, ip_cam_data_path, cwd_path=os.getcwd()
         else:
             noSeller_time_cam.to_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_noSeller_time.csv'),
                                      index=False)
-
-        backup_db(cwd_path)
