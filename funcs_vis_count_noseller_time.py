@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import shutil
 from datetime import datetime, timedelta
@@ -21,9 +22,9 @@ def backup_db(cwd_path):
         except:
             pass
 
-    # if len(os.listdir(os.path.join(cwd_path, 'db_backups'))) > 30:
-    #     oldest_day = os.listdir(os.path.join(cwd_path, 'db_backups'))[0]
-    #     shutil.rmtree(os.path.join(cwd_path, 'db_backups', oldest_day))
+    if len(os.listdir(os.path.join(cwd_path, 'db_backups'))) > 180:
+        oldest_day = os.listdir(os.path.join(cwd_path, 'db_backups'))[0]
+        shutil.rmtree(os.path.join(cwd_path, 'db_backups', oldest_day))
 
 
 def base_columns_hours(cam_name, cwd_path=os.getcwd()):
@@ -218,7 +219,10 @@ def noSeller_time(cam_name, new_shapes, date, absence_threshold=10, cwd_path=os.
             # Shift the time column to calculate the difference
             full_ones['dt_shift'] = full_ones['dt'].shift(1, fill_value=full_ones['dt'].iloc[0])
             full_ones['dt_delta'] = full_ones['dt'] - full_ones['dt_shift']
-            full_ones['minutes'] = full_ones['dt_delta'].dt.seconds / 60
+
+            # Ensure minutes column is numeric
+            full_ones['minutes'] = pd.to_numeric(full_ones['dt_delta'].dt.seconds / 60, errors='coerce')
+            full_ones['minutes'] = full_ones['minutes'].fillna(0)  # Fill NaN values with 0
 
             # Compare with the threshold
             full_ones['thresholded'] = round(
@@ -241,7 +245,7 @@ def noSeller_time(cam_name, new_shapes, date, absence_threshold=10, cwd_path=os.
                     full_no_seller_time.iloc[0, i + 1] = 60
             full_no_seller_time = full_no_seller_time.iloc[:, :-1]
 
-            # ДОБАВЛЯЕМ ОБРАБОТКУ УТРЕННЕГО ОПОЗДАНИЯ
+            # ДОБАВЛЯЕМ ОБРАБОТКУ УТРЕННЕГО ОПОЗДАНИЯ,
             # Определяем время открытия магазина
             opening_time = datetime.strptime(date + str(hour_start).zfill(2), '%y%m%d%H')
 
@@ -251,8 +255,12 @@ def noSeller_time(cam_name, new_shapes, date, absence_threshold=10, cwd_path=os.
             # Вычисляем опоздание в минутах
             if first_appearance > opening_time:
                 late_minutes = (first_appearance - opening_time).total_seconds() / 60
-                # Если опоздание превышает порог, добавляем его к часу открытия
-                if late_minutes > absence_threshold:
+                
+                # Учитываем опоздание ТОЛЬКО если оно в пределах первого часа,
+                # То есть первое появление должно быть до конца первого часа работы
+                first_hour_end = opening_time + timedelta(hours=1)
+                
+                if late_minutes > absence_threshold and first_appearance <= first_hour_end:
                     opening_hour = str(hour_start)
                     if opening_hour in full_no_seller_time.columns:
                         full_no_seller_time[opening_hour] = full_no_seller_time[opening_hour] + int(late_minutes)
@@ -350,3 +358,76 @@ def vis_count_noseller_pipeline(cam_name, ip_cam_data_path, cwd_path=os.getcwd()
         else:
             noSeller_time_cam.to_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_noSeller_time.csv'),
                                      index=False)
+
+
+def update_visitors(cam_name, date_start, date_end, cwd_path):
+    if not cam_name[-1].isdigit() or cam_name[-1] == '1':
+        # visitors_counting algorithm works only with days
+        day_start = date_start[:6]
+        day_end = date_end[:6]
+
+        camconfig = load_camconfig(cwd_path)
+        cam_set = [cam_set for cam_set in camconfig if cam_set['cam_name'] == cam_name][0]
+        cur_params = tuple(map(int, cam_set['vis_count_alg'].strip('()').split(', ')))
+        mean_threshold, window_next = cur_params
+
+        cam_shapes = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
+        slice_cam_shapes = dt_slice_shape_df(cam_shapes, day_start, day_end)
+
+        new_cam_visitors = pd.DataFrame()
+        slice_days = slice_cam_shapes['origin_file_name'].apply(lambda x: x[:6]).unique()
+        for day in slice_days:
+            day_shapes = dt_slice_shape_df(slice_cam_shapes, day, day)
+            day_shapes['cam_name'] = cam_name
+            day_visitors = visitors_counting(cam_name, day_shapes, day,
+                                             mean_threshold, window_next, cwd_path=cwd_path)
+            new_cam_visitors = pd.concat([new_cam_visitors, day_visitors])
+
+        cam_visitors = pd.read_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv'))
+        cam_visitors = cam_visitors.sort_values('date')
+        cam_visitors = cam_visitors.reset_index(drop=True)
+
+        if len(new_cam_visitors) != 0:
+            cam_visitors.set_index('date', inplace=True)
+            new_cam_visitors.set_index('date', inplace=True)
+            auto_cam_visitors = cam_visitors[cam_visitors['s'] != 'real'].copy()
+
+            # Находим индексы, которые есть в new_cam_visitors, но отсутствуют в auto_cam_visitors
+            missing_indices = new_cam_visitors.index.difference(auto_cam_visitors.index)
+            if not missing_indices.empty:
+                # Добавляем отсутствующие строки в auto_cam_visitors
+                missing_rows = new_cam_visitors.loc[missing_indices]
+                auto_cam_visitors = pd.concat([auto_cam_visitors, missing_rows])
+
+            auto_cam_visitors.update(new_cam_visitors)
+            cam_visitors.update(auto_cam_visitors)
+            cam_visitors.reset_index(inplace=True)
+            cam_visitors.to_csv(
+                os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv'), index=False)
+        else:
+            hour_start = int(cam_set['work_hours'].strip('()').split(', ')[0])
+            hour_end = int(cam_set['work_hours'].strip('()').split(', ')[1])
+            dt_date_start = datetime.strptime(day_start, '%y%m%d')
+            dt_date_end = datetime.strptime(day_end, '%y%m%d')
+
+            dt_delta = dt_date_end - dt_date_start
+            dt_days_range = []
+            for i in range(dt_delta.days + 1):
+                dt_day = dt_date_start + timedelta(days=i)
+                dt_days_range.append(dt_day)
+
+            zero_date = pd.DataFrame({'date': dt_days_range})
+            zero_hours_sum = pd.DataFrame(np.zeros((len(dt_days_range), hour_end - hour_start + 1), dtype=int),
+                                          columns=cam_visitors.columns[1:-1])
+            zero_visitors = pd.concat([zero_date, zero_hours_sum], axis=1)
+            zero_visitors['date'] = zero_visitors['date'].astype('str')
+            zero_visitors['s'] = 'auto'
+
+            cam_visitors.set_index('date', inplace=True)
+            zero_visitors.set_index('date', inplace=True)
+            auto_cam_visitors = cam_visitors[cam_visitors['s'] != 'real'].copy()
+            auto_cam_visitors.update(zero_visitors)
+            cam_visitors.update(auto_cam_visitors)
+            cam_visitors.reset_index(inplace=True)
+            cam_visitors.to_csv(
+                os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv'), index=False)
