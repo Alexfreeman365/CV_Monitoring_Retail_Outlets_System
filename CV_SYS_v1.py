@@ -1,4 +1,4 @@
-from keras.models import load_model
+# from keras.models import load_model
 import subprocess, psutil
 import telebot
 from ultralytics import YOLO
@@ -83,7 +83,7 @@ if __name__ == '__main__':
                         cam_shapes_db_len -= 1  # Вычитаем заголовок
 
                     shape_detection(shape_detector, cam_shapes_db_len, ip_cam_data_paths_dict[cam_name],
-                                    cam_name, cam_names, cwd_path)
+                                    cam_name, cam_names, change_past=None, cwd_path=cwd_path)
                     time.sleep(5)
         except Exception as error:
             log_event(cwd_path, app_name, 'error', type(error).__name__)
