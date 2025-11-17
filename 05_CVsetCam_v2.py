@@ -1,3 +1,4 @@
+import os
 import sys
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -5,11 +6,9 @@ from PyQt5.QtCore import *
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-import numpy as np
-from datetime import datetime, timedelta
-
 from funcs_initializer_camconfig_getcamframe import *
-from funcs_TxtUI_request_app_description import cleanup_mei_folders
+from funcs_CV import detection_zone_intersection, get_coords_from_text
+from funcs_vis_count_noseller_time import short_name, update_visitors
 
 
 class Ui_Dialog(object):
@@ -1148,6 +1147,7 @@ class ShowZoneWindow(QtWidgets.QWidget):
         self.cam_name = self.main_window.le_cam_name.text()
         date_start = self.main_window.le_date_start.text()
         date_end = self.main_window.le_date_end.text()
+        self.cwd_path = os.getcwd() # r'L:\Active_pjs\RG' # os.getcwd()
 
         self.setWindowTitle('Сохраненная зона детекции')
         self.image = QLabel()
@@ -1155,26 +1155,26 @@ class ShowZoneWindow(QtWidgets.QWidget):
         lay = QtWidgets.QVBoxLayout(self)
         lay.addWidget(self.image)
 
-        camconfig = load_camconfig()
+        camconfig = load_camconfig(self.cwd_path)
         imgs_path = self.main_window.ip_cam_data_paths_dict[self.cam_name]
         if (len(date_start) & len(date_end)) == 0:
             last_day = os.listdir(imgs_path)[-1]
             last_img = os.listdir(os.path.join(imgs_path, last_day))[0]
             img_path = os.path.join(imgs_path, last_day, last_img)
             self.coords = [cam_set[self.direction] for cam_set in camconfig if cam_set['cam_name'] == self.cam_name][0]
-            self.coords = self.get_coords_from_text(str(self.coords))
+            self.coords = get_coords_from_text(str(self.coords))
         else:
             first_range_day = '20' + date_start[:6]
             images = os.listdir(os.path.join(imgs_path, first_range_day))
             first_range_img = [img for img in images if img[:len(date_start)] == date_start][0]
             img_path = os.path.join(imgs_path, first_range_day, first_range_img)
-            df_cam = pd.read_csv(os.path.join(os.getcwd(), 'db', f'{self.cam_name}_shapes_locs.csv'))
-            df_cam_slice = self.dt_slice_shape_df(df_cam, date_start, date_end)
+            df_cam = pd.read_csv(os.path.join(self.cwd_path, 'db', f'{self.cam_name}_shapes_locs.csv'))
+            df_cam_slice = dt_slice_shape_df(df_cam, date_start, date_end)
             if self.direction == 'shape_zone':
                 self.coords = df_cam_slice.iloc[0]['shape_zone_coords']
             else:
                 self.coords = df_cam_slice.iloc[0]['face_zone_coords']
-            self.coords = self.get_coords_from_text(str(self.coords))
+            self.coords = get_coords_from_text(str(self.coords))
 
         self.pixmap = QPixmap(img_path)
         self.pixmap_small = self.pixmap.scaled(int(self.pixmap.width() / 1.5), int(self.pixmap.height() / 1.5))
@@ -1182,40 +1182,6 @@ class ShowZoneWindow(QtWidgets.QWidget):
         self.setMinimumSize(int(self.pixmap_small.width()), int(self.pixmap_small.height()))
 
         self.setCoordsToEditLines()
-
-    def get_coords_from_text(self, coords):
-        if len(coords.split(',')) == 4:
-            # Single zone coords
-            dirty_list = coords[1:-1].split(',')
-            ymin = int(dirty_list[0])
-            ymax = int(dirty_list[1][1:])
-            xmin = int(dirty_list[2][1:])
-            xmax = int(dirty_list[3][1:])
-            return ymin, ymax, xmin, xmax
-
-        if len(coords.split(',')) == 8:
-            # Double zone coords
-            l0 = coords.split(')')[0][2:].split(',')
-            t0 = tuple(np.array(l0, dtype='int'))
-            l1 = coords.split(')')[1][3:].split(',')
-            t1 = tuple(np.array(l1, dtype='int'))
-            return [t0, t1]
-
-        if len(coords.split(',')) == 12:
-            # Triple zone coords
-            l0 = coords.split(')')[0][2:].split(',')
-            t0 = tuple(np.array(l0, dtype='int'))
-            l1 = coords.split(')')[1][3:].split(',')
-            t1 = tuple(np.array(l1, dtype='int'))
-            l2 = coords.split(')')[2][3:].split(',')
-            t2 = tuple(np.array(l2, dtype='int'))
-            return [t0, t1, t2]
-
-    def dt_slice_shape_df(self, df_cam, dt_start, dt_end):
-        df = df_cam.copy()
-        dt_end_full = str(int(dt_end) + 1)
-        df['dt'] = df['uid8'].apply(lambda x: str(x)[:10])
-        return df[(df['dt'] >= dt_start) & (df['dt'] < dt_end_full)].iloc[:, 0:-1]
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -1314,36 +1280,8 @@ class SetZoneWindow(QtWidgets.QWidget):
             'register': self.main_window.le_register_zone
         }
 
-    def get_coords_from_text(self, coords):
-        if len(coords.split(',')) == 4:
-            # Single zone coords
-            dirty_list = coords[1:-1].split(',')
-            ymin = int(dirty_list[0])
-            ymax = int(dirty_list[1][1:])
-            xmin = int(dirty_list[2][1:])
-            xmax = int(dirty_list[3][1:])
-            return ymin, ymax, xmin, xmax
-
-        if len(coords.split(',')) == 8:
-            # Double zone coords
-            l0 = coords.split(')')[0][2:].split(',')
-            t0 = tuple(np.array(l0, dtype='int'))
-            l1 = coords.split(')')[1][3:].split(',')
-            t1 = tuple(np.array(l1, dtype='int'))
-            return [t0, t1]
-
-        if len(coords.split(',')) == 12:
-            # Triple zone coords
-            l0 = coords.split(')')[0][2:].split(',')
-            t0 = tuple(np.array(l0, dtype='int'))
-            l1 = coords.split(')')[1][3:].split(',')
-            t1 = tuple(np.array(l1, dtype='int'))
-            l2 = coords.split(')')[2][3:].split(',')
-            t2 = tuple(np.array(l2, dtype='int'))
-            return [t0, t1, t2]
-
     def paint_existing_zone(self, pixmap_small, text):
-        coords = self.get_coords_from_text(text)
+        coords = get_coords_from_text(text)
         y1, y2, x1, x2 = coords
         y1, y2, x1, x2 = int(y1 / 1.5), int(y2 / 1.5), int(x1 / 1.5), int(x2 / 1.5)
         painterInstance = QPainter(pixmap_small)
@@ -1402,77 +1340,23 @@ class SaveRecalculateThread(QThread):
         super(SaveRecalculateThread, self).__init__(parent)
         self.main_window = main_window
         self.direction = direction
+        self.cwd_path = os.getcwd() # r'L:\Active_pjs\RG' # os.getcwd()
 
     def run(self):
         def change_camconfig_shape_zone(cam_name, shape_zone_coords):
-            camconfig = load_camconfig()
+            camconfig = load_camconfig(self.cwd_path)
             [cam_set.update(shape_zone=shape_zone_coords) for cam_set in camconfig if cam_set['cam_name'] == cam_name]
             save_camconfig(camconfig)
 
         def change_camconfig_face_zone(cam_name, face_zone_coords):
-            camconfig = load_camconfig()
+            camconfig = load_camconfig(self.cwd_path)
             [cam_set.update(face_zone=face_zone_coords) for cam_set in camconfig if cam_set['cam_name'] == cam_name]
             save_camconfig(camconfig)
-
-        def detection_zone_intersection(shape_location, zone_coords):
-            if len(str(zone_coords).split(',')) == 4:
-                # Single_zone_intersection
-                ymin, ymax, xmin, xmax = shape_location
-
-                if type(zone_coords) == tuple:
-                    y1, y2, x1, x2 = zone_coords
-                else:
-                    y1, y2, x1, x2 = get_coords_from_text(zone_coords)
-
-                dx = min(xmax, x2) - max(xmin, x1)
-                dy = min(ymax, y2) - max(ymin, y1)
-
-                if (dx >= 0) and (dy >= 0):
-                    return 1
-                else:
-                    return 0
-
-            if len(str(zone_coords).split(',')) == 8:
-                # Double_zone_intersection
-                ymin, ymax, xmin, xmax = shape_location
-
-                y01, y02, x01, x02 = get_coords_from_text(zone_coords)[0]
-                y11, y12, x11, x12 = get_coords_from_text(zone_coords)[1]
-
-                dx0 = min(xmax, x02) - max(xmin, x01)
-                dy0 = min(ymax, y02) - max(ymin, y01)
-                dx1 = min(xmax, x12) - max(xmin, x11)
-                dy1 = min(ymax, y12) - max(ymin, y11)
-
-                if ((dx0 >= 0) and (dy0 >= 0)) | ((dx1 >= 0) and (dy1 >= 0)):
-                    return 1
-                else:
-                    return 0
-
-            if len(str(zone_coords).split(',')) == 12:
-                # Triple_zone_intersection
-                ymin, ymax, xmin, xmax = shape_location
-
-                y01, y02, x01, x02 = get_coords_from_text(zone_coords)[0]
-                y11, y12, x11, x12 = get_coords_from_text(zone_coords)[1]
-                y21, y22, x21, x22 = get_coords_from_text(zone_coords)[2]
-
-                dx0 = min(xmax, x02) - max(xmin, x01)
-                dy0 = min(ymax, y02) - max(ymin, y01)
-                dx1 = min(xmax, x12) - max(xmin, x11)
-                dy1 = min(ymax, y12) - max(ymin, y11)
-                dx2 = min(xmax, x22) - max(xmin, x21)
-                dy2 = min(ymax, y22) - max(ymin, y21)
-
-                if ((dx0 >= 0) and (dy0 >= 0)) | ((dx1 >= 0) and (dy1 >= 0)) | ((dx2 >= 0) and (dy2 >= 0)):
-                    return 1
-                else:
-                    return 0
 
         def change_df_cam_shape_zone(cam_name, shape_zone_coords):
             date_start = self.main_window.le_date_start.text()
             date_end = self.main_window.le_date_end.text()
-            df_cam = pd.read_csv(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv'))
+            df_cam = pd.read_csv(os.path.join(self.cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
             df = df_cam.copy()
             dt_end_full = str(int(date_end) + 1)
             df['dt'] = df['uid8'].apply(lambda x: str(x)[:10])
@@ -1480,12 +1364,12 @@ class SaveRecalculateThread(QThread):
                 lambda x: detection_zone_intersection(get_coords_from_text(x), shape_zone_coords))
             df.loc[(df['dt'] >= date_start) & (df['dt'] < dt_end_full), 'shape_zone_coords'] = shape_zone_coords
             df = df.iloc[:, 0:-1]
-            df.to_csv(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv'), index=False)
+            df.to_csv(os.path.join(self.cwd_path, 'db', f'{cam_name}_shapes_locs.csv'), index=False)
 
         def change_df_cam_face_zone(cam_name, face_zone_coords):
             date_start = self.main_window.le_date_start.text()
             date_end = self.main_window.le_date_end.text()
-            df_cam = pd.read_csv(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv'))
+            df_cam = pd.read_csv(os.path.join(self.cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
             df = df_cam.copy()
             dt_end_full = str(int(date_end) + 1)
             df['dt'] = df['uid8'].apply(lambda x: str(x)[:10])
@@ -1493,35 +1377,7 @@ class SaveRecalculateThread(QThread):
                 lambda x: detection_zone_intersection(get_coords_from_text(x), face_zone_coords))
             df.loc[(df['dt'] >= date_start) & (df['dt'] < dt_end_full), 'face_zone_coords'] = face_zone_coords
             df = df.iloc[:, 0:-1]
-            df.to_csv(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv'), index=False)
-
-        def get_coords_from_text(coords):
-            if len(coords.split(',')) == 4:
-                # Single zone coords
-                dirty_list = coords[1:-1].split(',')
-                ymin = int(dirty_list[0])
-                ymax = int(dirty_list[1][1:])
-                xmin = int(dirty_list[2][1:])
-                xmax = int(dirty_list[3][1:])
-                return ymin, ymax, xmin, xmax
-
-            if len(coords.split(',')) == 8:
-                # Double zone coords
-                l0 = coords.split(')')[0][2:].split(',')
-                t0 = tuple(np.array(l0, dtype='int'))
-                l1 = coords.split(')')[1][3:].split(',')
-                t1 = tuple(np.array(l1, dtype='int'))
-                return [t0, t1]
-
-            if len(coords.split(',')) == 12:
-                # Triple zone coords
-                l0 = coords.split(')')[0][2:].split(',')
-                t0 = tuple(np.array(l0, dtype='int'))
-                l1 = coords.split(')')[1][3:].split(',')
-                t1 = tuple(np.array(l1, dtype='int'))
-                l2 = coords.split(')')[2][3:].split(',')
-                t2 = tuple(np.array(l2, dtype='int'))
-                return [t0, t1, t2]
+            df.to_csv(os.path.join(self.cwd_path, 'db', f'{cam_name}_shapes_locs.csv'), index=False)
 
         def set_shape_coords(date_start, date_end):
             coords_list = []
@@ -1554,200 +1410,6 @@ class SaveRecalculateThread(QThread):
                 else:
                     change_df_cam_face_zone(cam_name, coords)
 
-        def base_columns_hours(cam_name):
-            camconfig = load_camconfig()
-            cam_set = [cam_set for cam_set in camconfig if cam_set['cam_name'] == cam_name][0]
-            hour_start = int(cam_set['work_hours'].split(',')[0][1:])
-            hour_end = int(cam_set['work_hours'].split(',')[1][:-1])
-            int_hours = np.arange(hour_start, hour_end)
-            cols = [str(hour) for hour in int_hours]
-            cols.insert(0, 'date')
-            cols.append('sum')
-            cols.append('s')
-            return cols, hour_start, hour_end
-
-        def short_name(name):
-            if name[-1].isdigit():
-                name = name[:-1]
-            return name
-
-        def visitors_counting(cam_name, new_shapes, date, mean_threshold, window_next, step_of_frames=1):
-            columns, hour_start, hour_end = base_columns_hours(cam_name)
-            if len(new_shapes) != 0:
-                new_shapes = new_shapes[new_shapes['cam_name'] == cam_name]
-                shapes = new_shapes[new_shapes['shape_zone'] == 1]
-                if len(shapes) != 0:
-                    column = ['origin_file_name', 'cam_name']
-                    shapes = shapes[column].copy()
-
-                    shapes['date'] = shapes['origin_file_name'].apply(lambda x: int(x[0:6])).astype('str')
-                    shapes['hour'] = shapes['origin_file_name'].apply(lambda x: int(x[6:8])).astype('str')
-
-                    # Combining people into groups according to their frames and counting them
-                    df_mto = shapes[shapes.duplicated(subset='origin_file_name', keep=False)]
-                    df_mto_gr = (df_mto[df_mto.duplicated(subset='origin_file_name', keep=False)]
-                                 .groupby('origin_file_name')['date'].count())
-                    df_mto_gr = pd.DataFrame(df_mto_gr)
-                    df_mto_gr.columns = ['people_num']
-
-                    # Connecting group frames with single ones
-                    df_ones = shapes.drop_duplicates(
-                        subset='origin_file_name').set_index('origin_file_name')
-                    df_pc = df_ones.join(df_mto_gr)
-                    df_pc = df_pc.fillna(1)
-                    df_pc.reset_index(inplace=True)
-                    df_pc['people_num'] = df_pc['people_num'].astype('int')
-
-                    # Creating a sample of frames according to the time step
-                    if step_of_frames > 1:
-                        df_pc = df_pc.copy().iloc[range(0, len(df_pc), step_of_frames)]
-
-                    # Creating a quantitative shift to count the change
-                    # in the number of people from frame to frame
-                    df_pc['people_lag'] = df_pc['people_num'].shift(1)
-                    df_pc = df_pc.fillna(1)
-                    df_pc['people_lag'] = df_pc['people_lag'].astype('int')
-
-                    df_pc = df_pc.fillna(1)
-                    df_pc['people_diff'] = df_pc['people_num'] - df_pc['people_lag']
-                    df_pc.loc[df_pc['people_diff'] < 0, 'people_diff'] = 0
-
-                    def custom_rolling_mean(data, mean_threshold, window_next):
-                        window = 1
-                        result = []
-                        for i in range(len(data)):
-                            if i < window:
-                                mean = 1
-                            else:
-                                start = max(i - window, 0)
-                                end = i
-                                mean = sum(data[start:end]) / (end - start)
-                                if mean <= mean_threshold:
-                                    window = 1
-                                else:
-                                    window = window_next
-                            result.append(mean)
-                        result = result[1:]
-                        result.append(1)
-                        return result
-
-                    df_pc['people_num_rol'] = custom_rolling_mean(
-                        df_pc['people_num'], mean_threshold, window_next)
-                    df_pc['people_lag_rol'] = custom_rolling_mean(
-                        df_pc['people_lag'], mean_threshold, window_next)
-
-                    df_pc = df_pc.fillna(1)
-                    df_pc['people_diff_rol'] = df_pc['people_num_rol'] - df_pc['people_lag_rol']
-                    df_pc.loc[df_pc['people_diff_rol'] < 0, 'people_diff_rol'] = 0
-
-                    visitors = pd.pivot_table(
-                        df_pc, values='people_diff_rol', index='date',
-                        columns='hour', aggfunc='sum', fill_value=0).reset_index()
-                    visitors.iloc[:, 1:12] = round(visitors.iloc[:, 1:12])
-                    visitors['sum'] = visitors.iloc[:, 1:12].sum(axis=1)
-                    visitors['s'] = 'auto'
-                    visitors.columns.name = None
-                    visitors['date'] = pd.to_datetime(visitors['date'], format='%y%m%d')
-
-                    if len(visitors.columns) < len(columns):
-                        visitors = pd.DataFrame(visitors, columns=columns).fillna(0)
-
-                    int_columns = {c: 'int' for c in visitors.columns[1:-1]}
-                    visitors = visitors.astype(int_columns)
-                    visitors['date'] = visitors['date'].astype('str')
-
-                else:
-                    hour_zero_values = np.zeros((1, hour_end - hour_start + 1), dtype=int)
-                    visitors = pd.DataFrame(hour_zero_values, columns=columns[1:-1])
-                    visitors['date'] = datetime.strptime(date, '%y%m%d')
-                    visitors['date'] = visitors['date'].astype('str')
-                    visitors['s'] = 'auto'
-                    visitors = visitors[columns]
-            else:
-                hour_zero_values = np.zeros((1, hour_end - hour_start + 1), dtype=int)
-                visitors = pd.DataFrame(hour_zero_values, columns=columns[1:-1])
-                visitors['date'] = datetime.strptime(date, '%y%m%d')
-                visitors['date'] = visitors['date'].astype('str')
-                visitors['s'] = 'auto'
-                visitors = visitors[columns]
-
-            return visitors
-
-        def dt_slice_shape_df(df_cam, dt_start, dt_end):
-            df = df_cam.copy()
-            dt_end_full = str(int(dt_end) + 1)
-            df['dt'] = df['uid8'].apply(lambda x: str(x)[:10])
-            return df[(df['dt'] >= dt_start) & (df['dt'] < dt_end_full)].iloc[:, 0:-1]
-
-        def dt_slice_visitors(visitors, dt_start, dt_end):
-            df_visitors = visitors.copy()
-            dt_end_full = str(int(dt_end) + 1)
-            df_visitors['dt'] = df_visitors['date'].apply(lambda x: ''.join(str(x)[2:].split('-')))
-            return df_visitors[(df_visitors['dt'] >= dt_start) & (df_visitors['dt'] < dt_end_full)].iloc[:, 0:-1]
-
-        def update_visitors(cam_name, date_start, date_end):
-            if not cam_name[-1].isdigit() or cam_name[-1] == '1':
-                # visitors_counting algorithm works only with days
-                day_start = date_start[:6]
-                day_end = date_end[:6]
-
-                camconfig = load_camconfig()
-                cam_set = [cam_set for cam_set in camconfig if cam_set['cam_name'] == cam_name][0]
-                cur_params = tuple(map(int, cam_set['vis_count_alg'].strip('()').split(', ')))
-                mean_threshold, window_next = cur_params
-
-                cam_shapes = pd.read_csv(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv'))
-                slice_cam_shapes = dt_slice_shape_df(cam_shapes, day_start, day_end)
-
-                new_cam_visitors = pd.DataFrame()
-                slice_days = slice_cam_shapes['origin_file_name'].apply(lambda x: x[:6]).unique()
-                for day in slice_days:
-                    day_shapes = dt_slice_shape_df(slice_cam_shapes, day, day)
-                    day_shapes['cam_name'] = cam_name
-                    day_visitors = visitors_counting(cam_name, day_shapes, day, mean_threshold, window_next)
-                    new_cam_visitors = pd.concat([new_cam_visitors, day_visitors])
-
-                cam_visitors = pd.read_csv(os.path.join(os.getcwd(), 'db', f'{short_name(cam_name)}_visitors.csv'))
-                cam_visitors = cam_visitors.sort_values('date')
-                cam_visitors = cam_visitors.reset_index(drop=True)
-
-                if len(new_cam_visitors) != 0:
-                    cam_visitors.set_index('date', inplace=True)
-                    new_cam_visitors.set_index('date', inplace=True)
-                    auto_cam_visitors = cam_visitors[cam_visitors['s'] != 'real'].copy()
-                    auto_cam_visitors.update(new_cam_visitors)
-                    cam_visitors.update(auto_cam_visitors)
-                    cam_visitors.reset_index(inplace=True)
-                    cam_visitors.to_csv(
-                        os.path.join(os.getcwd(), 'db', f'{short_name(cam_name)}_visitors.csv'), index=False)
-                else:
-                    hour_start = int(cam_set['work_hours'].strip('()').split(', ')[0])
-                    hour_end = int(cam_set['work_hours'].strip('()').split(', ')[1])
-                    dt_date_start = datetime.strptime(day_start, '%y%m%d')
-                    dt_date_end = datetime.strptime(day_end, '%y%m%d')
-
-                    dt_delta = dt_date_end - dt_date_start
-                    dt_days_range = []
-                    for i in range(dt_delta.days + 1):
-                        dt_day = dt_date_start + timedelta(days=i)
-                        dt_days_range.append(dt_day)
-
-                    zero_date = pd.DataFrame({'date': dt_days_range})
-                    zero_hours_sum = pd.DataFrame(np.zeros((len(dt_days_range), hour_end - hour_start + 1), dtype=int),
-                                                  columns=cam_visitors.columns[1:-1])
-                    zero_visitors = pd.concat([zero_date, zero_hours_sum], axis=1)
-                    zero_visitors['date'] = zero_visitors['date'].astype('str')
-                    zero_visitors['s'] = 'auto'
-
-                    cam_visitors.set_index('date', inplace=True)
-                    zero_visitors.set_index('date', inplace=True)
-                    auto_cam_visitors = cam_visitors[cam_visitors['s'] != 'real'].copy()
-                    auto_cam_visitors.update(zero_visitors)
-                    cam_visitors.update(auto_cam_visitors)
-                    cam_visitors.reset_index(inplace=True)
-                    cam_visitors.to_csv(
-                        os.path.join(os.getcwd(), 'db', f'{short_name(cam_name)}_visitors.csv'), index=False)
-
         cam_name = self.main_window.le_cam_name.text()
         date_start = self.main_window.le_date_start.text()
         date_end = self.main_window.le_date_end.text()
@@ -1758,8 +1420,8 @@ class SaveRecalculateThread(QThread):
         if self.direction == 'shape_zone':
             set_shape_coords(date_start, date_end)
             if (len(date_start) & len(date_end)) != 0:
-                if os.path.exists(os.path.join(os.getcwd(), 'db', f'{short_name(cam_name)}_visitors.csv')):
-                    update_visitors(cam_name, date_start, date_end)
+                if os.path.exists(os.path.join(self.cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv')):
+                    update_visitors(cam_name, date_start, date_end, cwd_path=self.cwd_path)
         else:
             set_register_coords(date_start, date_end)
         self.output_message.emit(text_saved_successfully)
@@ -1857,8 +1519,9 @@ class UI(QDialog):
 
         self.pb_wishes.clicked.connect(self.button_wishes_clicked)
         self.pb_thanks.clicked.connect(self.button_thanks_clicked)
+        self.cwd_path = os.getcwd() # r'L:\Active_pjs\RG' # os.getcwd()
 
-        self.ip_cam_data_paths_dict, self.cam_names = initializer()
+        self.ip_cam_data_paths_dict, self.cam_names = initializer(self.cwd_path)
         self.disable_enable_ui(False)
         self.show()
 
@@ -1902,7 +1565,7 @@ class UI(QDialog):
     def pb_show_camconfig_clicked(self):
         try:
             cam_name = self.le_cam_name.text()
-            camconfig = load_camconfig()
+            camconfig = load_camconfig(self.cwd_path)
             work_hours = [cam_set['work_hours'] for cam_set in camconfig if cam_set['cam_name'] == cam_name][0]
             start_hour = work_hours.split(',')[0][1:]
             end_hour = work_hours.split(',')[1][1:-1]
@@ -1920,7 +1583,7 @@ class UI(QDialog):
             end_hour = self.le_hour_end.text()
             if (len(start_hour) & len(end_hour)) != 0:
                 work_hours = int(start_hour), int(end_hour)
-                camconfig = load_camconfig()
+                camconfig = load_camconfig(self.cwd_path)
                 [cam_set.update(work_hours=work_hours) for cam_set in camconfig if cam_set['cam_name'] == cam_name]
                 save_camconfig(camconfig)
                 self.label_wishes_thanks.setText('')
@@ -1948,7 +1611,7 @@ class UI(QDialog):
             self.ShowZoneWindow.show()
             self.label_out.setText('')
         except:
-            self.label_out.setText(self.text_data_range)
+            self.label_out.setText(self.text_data_error)
         self.label_wishes_thanks.setText('')
 
     def pb_set_shape_zone_1_clicked(self):
@@ -2033,9 +1696,6 @@ class UI(QDialog):
         self.label_wishes_thanks.setText('Благодарность на карту Сбербанк: ' + tel + ' Алексей')
         self.label_out.setText('')
 
-    def closeEvent(self, event):
-        cleanup_mei_folders()  # Очистка перед закрытием
-        event.accept()  # Подтверждаем закрытие
 
 def main():
     app = QApplication(sys.argv)
