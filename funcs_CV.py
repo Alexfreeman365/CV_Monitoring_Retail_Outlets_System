@@ -7,7 +7,8 @@ from datetime import datetime
 
 from funcs_initializer_camconfig_getcamframe import *
 from funcs_TxtUI_request_app_description import log_event
-from funcs_vis_count_noseller_time import vis_count_noseller_pipeline
+from funcs_vis_count_noseller_time import (short_name,
+                                           vis_count_noseller_pipeline)
 
 
 def get_coords_from_text(coords):
@@ -201,29 +202,77 @@ def is_duplicate_detection(new_box, existing_boxes, similarity_threshold=0.9, ma
     return False
 
 
-def shape_detection(shape_detector, total_len_shapes_db, images_path, cam_name, cam_names, cwd_path=os.getcwd()):
-    last_day_processed_imgs = load_last_day_processed_imgs(cam_name, cwd_path)
-    if len(last_day_processed_imgs) != 0:
-        last_seen_day = last_day_processed_imgs[0][:6]
+def change_past_process(cam_name, day, cwd_path, df_new):
+    file_path = os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv')
+
+    if os.path.exists(file_path):
+        df_existing = pd.read_csv(file_path)
+        df_filtered = dt_slice_shape_df(df_existing, day, day)
+        df_remaining = df_existing[~df_existing.index.isin(df_filtered.index)]
+
+        df_combined = pd.concat([df_remaining, df_new])
+        df_final = df_combined.sort_values('origin_file_name').reset_index(drop=True)
+        df_final.to_csv(file_path, index=False)
     else:
-        last_seen_day = '000101'
+        df_new_sorted = df_new.sort_values('origin_file_name').reset_index(drop=True)
+        df_new_sorted.to_csv(file_path, index=False)
+
+
+def shape_detection(shape_detector, total_len_shapes_db, images_path, cam_name,
+                    cam_names, change_past=None, cwd_path=os.getcwd()):
+    last_seen_day = None
+    last_day_processed_imgs = []
 
     cam_imgs_dict = {}
-    for day in os.listdir(images_path):
-        day_cam_imgs = []
-        if day[2:] >= last_seen_day:
-            for file_name in os.listdir(os.path.join(images_path, day)):
-                if get_first_part(file_name) != 'Thumbs':
-                    day_cam_imgs.append(file_name)
-            cam_imgs_dict[day] = day_cam_imgs
+    if change_past is None:
+        last_day_processed_imgs = load_last_day_processed_imgs(cam_name, cwd_path)
+        if len(last_day_processed_imgs) != 0:
+            last_seen_day = last_day_processed_imgs[0][:6]
+        else:
+            last_seen_day = '000101'
 
-    last_day = str()
+        for day in os.listdir(images_path):
+            day_cam_imgs = []
+            if day[2:] >= last_seen_day:
+                for file_name in os.listdir(os.path.join(images_path, day)):
+                    if get_first_part(file_name) != 'Thumbs':
+                        day_cam_imgs.append(file_name)
+                cam_imgs_dict[day] = day_cam_imgs
+
+    elif isinstance(change_past, list):
+        for day in os.listdir(images_path):
+            day_cam_imgs = []
+            if day[2:] in change_past:
+                for file_name in os.listdir(os.path.join(images_path, day)):
+                    if get_first_part(file_name) != 'Thumbs':
+                        day_cam_imgs.append(file_name)
+                cam_imgs_dict[day] = day_cam_imgs
+
+    elif isinstance(change_past, str):
+        # Reading manual data
+        xls = pd.ExcelFile(os.path.join(cwd_path, 'db', '1_real_viscount.xlsx'))
+        all_real_visitors = pd.read_excel(xls, short_name(cam_name))
+        xls.close()
+        all_real_visitors.sort_values('date', inplace=True)
+        all_real_visitors.reset_index(drop=True, inplace=True)
+        all_real_days_dt = np.unique(all_real_visitors['date'].dt.date)
+        dt_to_str = lambda x: datetime.strftime(x, '%y%m%d')
+        all_real_days = list(map(dt_to_str, all_real_days_dt))
+
+        for day in os.listdir(images_path):
+            day_cam_imgs = []
+            if day[2:] in all_real_days:
+                for file_name in os.listdir(os.path.join(images_path, day)):
+                    if get_first_part(file_name) != 'Thumbs':
+                        day_cam_imgs.append(file_name)
+                cam_imgs_dict[day] = day_cam_imgs
+
     for day in cam_imgs_dict.keys():
         shapes_locs = []
 
         last_day = day[2:]
 
-        if (last_seen_day != last_day and
+        if (change_past is None and last_seen_day != last_day and
                 (not cam_name[-1].isdigit() or cam_name[-1] == '1') and
                 os.path.exists(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))):
             vis_count_noseller_pipeline(cam_name, images_path, cwd_path)
@@ -231,7 +280,8 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path, cam_name, 
 
         # countdown = 0 # Визуализация отсчета при тестах
         for image_name in tqdm(cam_imgs_dict[day]):  # tqdm
-            if (image_name not in last_day_processed_imgs) & (get_first_part(image_name) != 'Thumbs'):
+            if (image_name not in last_day_processed_imgs
+                    and get_first_part(image_name) != 'Thumbs'):
 
                 img_size = os.path.getsize(os.path.join(images_path, day, image_name))
                 if img_size == 0:
@@ -242,7 +292,7 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path, cam_name, 
                     img = cv2.imread(os.path.join(images_path, day, image_name))
                 except:
                     print('Problem with: ', image_name, cam_name)
-                    if get_first_part(image_name) != 'Thumbs':
+                    if change_past is None and get_first_part(image_name) != 'Thumbs':
                         last_day_processed_imgs.append(image_name)
 
                         log_event(cwd_path, 'CV_SYS', 'sys', 'Starting the system')
@@ -313,25 +363,29 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path, cam_name, 
                     # Логирование дубликатов (опционально)
                     if duplicate_count > 0:
                         print(f"{cam_name} {image_name}: filtered {duplicate_count} duplicate detections")
-
-                last_day_processed_imgs.append(image_name)
+                if change_past is None:
+                    last_day_processed_imgs.append(image_name)
             # countdown += 1
             # print(f'{cam_name}_{day} Processing {int(countdown / (len(cam_imgs_dict[day])) * 100)}%')
             # clear_output(wait=True)
 
         df_new = pd.DataFrame(shapes_locs)
-        if os.path.exists(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv')):
-            df_new.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'),
-                          mode='a', header=False, index=False)
+        if change_past is None:
+            if os.path.exists(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv')):
+                df_new.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'),
+                              mode='a', header=False, index=False)
+            else:
+                df_new.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'), index=False)
         else:
-            df_new.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'), index=False)
+            change_past_process(cam_name, day[2:], cwd_path, df_new)
 
         if len(df_new) > 0:
             print(f'{(datetime.now()).strftime("%y%m%d %H:%M")} '
                   f'Detected {len(df_new)} new shapes in {cam_name} total: {total_len_shapes_db}')
 
-        last_day_processed_imgs_filtered = [v for v in last_day_processed_imgs if str(v)[:6] >= last_day]
-        if len(last_day_processed_imgs_filtered) == 0:
-            last_day_processed_imgs_filtered = last_day_processed_imgs
-        save_last_day_processed_imgs(last_day_processed_imgs_filtered, cam_name, cwd_path)
+        if change_past is None:
+            last_day_processed_imgs_filtered = [v for v in last_day_processed_imgs if str(v)[:6] >= last_day]
+            if len(last_day_processed_imgs_filtered) == 0:
+                last_day_processed_imgs_filtered = last_day_processed_imgs
+            save_last_day_processed_imgs(last_day_processed_imgs_filtered, cam_name, cwd_path)
     return
