@@ -218,7 +218,7 @@ def change_past_process(cam_name, day, cwd_path, df_new):
         df_new_sorted.to_csv(file_path, index=False)
 
 
-def shape_detection(shape_detector, total_len_shapes_db, images_path, cam_name,
+def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_name,
                     cam_names, change_past=None, cwd_path=os.getcwd()):
     last_seen_day = None
     last_day_processed_imgs = []
@@ -279,7 +279,7 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path, cam_name,
             save_shape_db_info(cam_names)
 
         # countdown = 0 # Визуализация отсчета при тестах
-        for image_name in tqdm(cam_imgs_dict[day]):  # tqdm
+        for image_name in tqdm(cam_imgs_dict[day], desc=f'{cam_name}: '):  # tqdm
             if (image_name not in last_day_processed_imgs
                     and get_first_part(image_name) != 'Thumbs'):
 
