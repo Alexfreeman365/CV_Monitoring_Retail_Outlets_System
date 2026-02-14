@@ -85,97 +85,6 @@ def send_telegram_message(chat_id=None, message=None):
                 time.sleep(2)
                 bot.send_message(chat_id, message)
 
-
-def send_whatsapp_message(msg):
-    """Обновляет сообщение по правилам и перезапускает приложение"""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-
-    # Ищем конфигурационный файл
-    config_files = [f for f in os.listdir(script_dir)
-                    if f.endswith('WhatsappMsgSender_config.txt')]
-
-    if not config_files:
-        print("Конфигурационный файл не найден")
-        return False
-
-    config_file = os.path.join(script_dir, config_files[0])
-
-    try:
-        # Читаем содержимое файла
-        with open(config_file, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-
-        # Получаем текущую дату
-        current_date = datetime.now().strftime("%Y-%m-%d")
-
-        # Обновляем строку с сообщением по правилам
-        updated_lines = []
-        message_updated = False
-
-        for line in lines:
-            if line.strip().startswith('СООБЩЕНИЕ'):
-                message_updated = True
-
-                # Разбираем строку на ключ и значение
-                if '=' in line:
-                    key_value = line.split('=', 1)
-                    key_part = key_value[0].strip()
-                    current_value = key_value[1].strip()
-
-                    # Проверяем формат ключа
-                    if key_part.startswith('СООБЩЕНИЕ(') and ')' in key_part:
-                        # Извлекаем дату из ключа
-                        date_part = key_part.split('(', 1)[1].split(')', 1)[0]
-
-                        if date_part == current_date:
-                            # Тот же день - без приветствия
-                            new_message = f"СООБЩЕНИЕ({current_date})={msg}"
-                        else:
-                            # Другой день - с приветствием
-                            new_message = f"СООБЩЕНИЕ({current_date})=Добрый день, {{имя}}. {msg}"
-                    else:
-                        # Старый формат без даты - с приветствием
-                        new_message = f"СООБЩЕНИЕ({current_date})=Добрый день, {{имя}}. {msg}"
-
-                    updated_lines.append(f'{new_message}\n')
-                else:
-                    updated_lines.append(line)
-            else:
-                updated_lines.append(line)
-
-        # Если строка с сообщением не найдена, добавляем новую
-        if not message_updated:
-            new_message = f"СООБЩЕНИЕ({current_date})=Добрый день, {{имя}}. {msg}"
-            updated_lines.append(f'{new_message}\n')
-
-        # Записываем обновленное содержимое
-        with open(config_file, 'w', encoding='utf-8') as f:
-            f.writelines(updated_lines)
-
-    except Exception as e:
-        print(f"Ошибка при обновлении конфигурационного файла: {e}")
-        return False
-
-    # Ищем exe файл для запуска
-    exe_files = [f for f in os.listdir(script_dir)
-                 if f.startswith('WhatsappMsgSender') and f.endswith('.exe')]
-
-    if not exe_files:
-        print("EXE файл не найден")
-        return False
-
-    exe_path = os.path.join(script_dir, exe_files[0])
-
-    try:
-        # Запускаем exe файл
-        subprocess.Popen([exe_path])
-        print("Приложение запущено")
-        return True
-    except Exception as e:
-        print(f"Ошибка при запуске приложения: {e}")
-        return False
-
-
 DESCRIPTION = (
         'После успешного запуска программы создайте для нее ярлык и перенесите его в папку автозагрузки Windows.\n'
         '\n'
@@ -258,7 +167,6 @@ if __name__ == '__main__':
                                 no_connection[cam_name] = last_img_dt
                                 msg = f'{cam_name.upper()} XXX Не в сети больше трех минут ¯\_(ツ)_/¯'
                                 send_telegram_message(chat_id, msg)
-                                send_whatsapp_message(msg)
                                 if ledger_flag:
                                     log_event(cwd_path, app_name, cam_name, 'disconnected over 3 min')
                             if cam_name in no_connection and delta < 60:  # 60
@@ -267,7 +175,6 @@ if __name__ == '__main__':
                                 lost_time = seconds_to_hhmmss(int(lost_delta))
                                 msg = f'{cam_name.upper()} Ok - В сети! - {lost_time}'
                                 send_telegram_message(chat_id, msg)
-                                send_whatsapp_message(msg)
                                 if ledger_flag:
                                     log_event(cwd_path, app_name, cam_name, f'connected >>> lost {lost_time}')
                             if cam_name in total_sended:
@@ -282,7 +189,6 @@ if __name__ == '__main__':
                                 msg = f'{cam_name.upper()} Общее кол-во кадров за день: ' \
                                       f'из {estimated_num_frames} в наличии {total_not_empty_frames}'
                                 send_telegram_message(chat_id, msg)
-                                send_whatsapp_message(msg)
                                 total_sended.append(cam_name)
                             else:
                                 total_sended.clear()
