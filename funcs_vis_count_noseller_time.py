@@ -245,22 +245,30 @@ def noSeller_time(cam_name, new_shapes, date, absence_threshold=10, cwd_path=os.
                     full_no_seller_time.iloc[0, i + 1] = 60
             full_no_seller_time = full_no_seller_time.iloc[:, :-1]
 
-            # ДОБАВЛЯЕМ ОБРАБОТКУ УТРЕННЕГО ОПОЗДАНИЯ,
+            # ОБРАБОТКА УТРЕННЕГО ОПОЗДАНИЯ,
             # Определяем время открытия магазина
             opening_time = datetime.strptime(date + str(hour_start).zfill(2), '%y%m%d%H')
 
             # Находим первое появление продавца
             first_appearance = df_ones['dt'].min()
 
+            # Вычисляем количество реальных обнаружений (не auto_insert)
+            real_detections = len(df_ones[df_ones['origin_file_name'] != 'auto_insert'])
+
             # Вычисляем опоздание в минутах
             if first_appearance > opening_time:
                 late_minutes = (first_appearance - opening_time).total_seconds() / 60
-                
-                # Учитываем опоздание ТОЛЬКО если оно в пределах первого часа,
-                # То есть первое появление должно быть до конца первого часа работы
+
+                # Учитываем опоздание ТОЛЬКО если:
+                # 1. Оно в пределах первого часа
+                # 2. В течение дня было достаточно реальных обнаружений (более 5)
                 first_hour_end = opening_time + timedelta(hours=1)
-                
-                if late_minutes > absence_threshold and first_appearance <= first_hour_end:
+
+                # Если обнаружений мало (< 5), то игнорируем все срабатывания и считаем день пустым
+                if real_detections < 5:
+                    # Не добавляем утреннее опоздание вообще
+                    pass
+                elif late_minutes > absence_threshold and first_appearance <= first_hour_end:
                     opening_hour = str(hour_start)
                     if opening_hour in full_no_seller_time.columns:
                         full_no_seller_time[opening_hour] = full_no_seller_time[opening_hour] + int(late_minutes)
