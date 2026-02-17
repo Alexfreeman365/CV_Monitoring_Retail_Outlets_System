@@ -8,6 +8,15 @@ from datetime import datetime
 import time
 
 
+def get_path(relative_path):
+    """Универсальное получение пути к ресурсам"""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    # Ищем путь относительно КОРНЯ проекта (на уровень выше от utils)
+    base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+
+
 def txt_notification(app_name, path, msg):
     txt_name = f'{app_name}_notification.txt'
     txt_path = os.path.join(path, txt_name)
