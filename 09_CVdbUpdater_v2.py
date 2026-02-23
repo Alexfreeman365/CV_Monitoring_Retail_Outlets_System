@@ -4,7 +4,9 @@ from datetime import datetime
 import time
 import sys
 
-from funcs_TxtUI_request_app_description import cleanup_mei_folders
+# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.funcs_TxtUI_request_app_description import cleanup_mei_folders
 
 import atexit
 atexit.register(cleanup_mei_folders)

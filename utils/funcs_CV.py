@@ -1,14 +1,19 @@
 import cv2
-import time
 from tqdm import tqdm
 import numpy as np
+
+import sys
+import os
+import time
 import csv
 from datetime import datetime
 
-from funcs_initializer_camconfig_getcamframe import *
-from funcs_TxtUI_request_app_description import log_event
-from funcs_vis_count_noseller_time import (short_name,
-                                           vis_count_noseller_pipeline)
+# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.funcs_initializer_camconfig_getcamframe import *
+from utils.funcs_TxtUI_request_app_description import log_event
+from utils.funcs_vis_count_noseller_time import (short_name,
+                                                 vis_count_noseller_pipeline)
 
 
 def get_coords_from_text(coords):

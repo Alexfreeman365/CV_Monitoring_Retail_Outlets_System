@@ -1,6 +1,11 @@
 import subprocess, psutil
+import time
+import sys
+import os
 
-from funcs_TxtUI_request_app_description import *
+# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.funcs_TxtUI_request_app_description import *
 
 import atexit
 atexit.register(cleanup_mei_folders)
@@ -68,6 +73,7 @@ if __name__ == '__main__':
     while True:
         try:
             time.sleep(reload_period)
+            cleanup_mei_folders()
 
             try:
                 kill_loaders(process)

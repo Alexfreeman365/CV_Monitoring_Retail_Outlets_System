@@ -1,13 +1,17 @@
 import telebot
-import time
 import ftplib
+import time
 import os
 import sys
-import subprocess
 
-from funcs_initializer_camconfig_getcamframe import load_camconfig
-from funcs_FTP_access_cams_media_structure import get_ftp_host_user_pas
-from funcs_TxtUI_request_app_description import *
+# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.funcs_initializer_camconfig_getcamframe import load_camconfig
+from utils.funcs_FTP_access_cams_media_structure import get_ftp_host_user_pas
+from utils.funcs_TxtUI_request_app_description import *
+
+import atexit
+atexit.register(cleanup_mei_folders)
 
 
 def get_last_frame(cam_name):

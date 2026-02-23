@@ -1,10 +1,13 @@
-# from keras.models import load_model
-import subprocess, psutil
-import telebot
 from ultralytics import YOLO
-from funcs_CV import *
-from funcs_vis_count_noseller_time import *
-from funcs_TxtUI_request_app_description import *
+import telebot
+import psutil
+import sys, os, subprocess
+
+# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.funcs_CV import *
+from utils.funcs_vis_count_noseller_time import *
+from utils.funcs_TxtUI_request_app_description import *
 
 
 def start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=True):

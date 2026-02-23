@@ -1,6 +1,7 @@
-import os
 import pandas as pd
 from PIL import Image
+import os
+
 
 
 def initializer(cwd_path=os.getcwd()):

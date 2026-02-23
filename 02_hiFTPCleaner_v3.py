@@ -1,8 +1,12 @@
 from time import sleep
 from datetime import timedelta
+import sys
+import os
 
-from funcs_FTP_access_cams_media_structure import *
-from funcs_TxtUI_request_app_description import *
+# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.funcs_FTP_access_cams_media_structure import *
+from utils.funcs_TxtUI_request_app_description import *
 
 import atexit
 atexit.register(cleanup_mei_folders)
@@ -152,6 +156,7 @@ if __name__ == '__main__':
                         check_delete(ftp_host, ftp_user, ftp_pas, cam_names, window)
 
                     sleep(check_period * 3600)
+                    cleanup_mei_folders()
                     # break
                 except Exception as error:
                     if ledger_flag:

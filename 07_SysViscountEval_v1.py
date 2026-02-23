@@ -1,11 +1,16 @@
-import os
-import sys
 import pandas as pd
 import numpy as np
+import os
+import sys
 from datetime import datetime
 
-from funcs_vis_count_noseller_time import short_name, visitors_counting
+# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.funcs_vis_count_noseller_time import short_name, visitors_counting
+from utils.funcs_TxtUI_request_app_description import cleanup_mei_folders
 
+import atexit
+atexit.register(cleanup_mei_folders)
 
 def load_camconfig():
     camconfig = []

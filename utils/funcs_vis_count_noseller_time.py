@@ -1,9 +1,12 @@
-import os
 import numpy as np
+import sys
+import os
 import shutil
 from datetime import datetime, timedelta
 
-from funcs_initializer_camconfig_getcamframe import *
+# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.funcs_initializer_camconfig_getcamframe import *
 
 
 def backup_db(cwd_path):

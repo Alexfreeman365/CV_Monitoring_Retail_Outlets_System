@@ -1,7 +1,7 @@
-import os
-import pickle
-import sys
 import ftplib
+import os
+import sys
+import pickle
 from datetime import datetime
 
 

@@ -2,10 +2,8 @@ import os
 import sys
 import shutil
 import glob
-# import portalocker
 import csv
 from datetime import datetime
-import time
 
 
 def get_path(relative_path):
