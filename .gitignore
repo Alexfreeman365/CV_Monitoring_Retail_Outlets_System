@@ -1,13 +1,32 @@
+.continue/
+.git/
 .idea/
-.ipynb_checkpoints/
-__pycache__/
-cams_media/
-db/
-db_backups/
+.venv/
+archive/
+bin/
+dist/
 temp/
-venv/
-VA_PC_client/
-VA_PC_CV/
+tests/
 
-*.exe
+*.dat
 *.ipynb
+
+# Системные файлы (Windows, macOS)
+desktop.ini
+Thumbs.db
+.DS_Store
+
+# PyCharm и IDE
+*.iml
+*.iws
+
+# Python (Кэш и виртуальные среды)
+*.py[cod]
+*$py.class
+.env
+
+# Логи и временные файлы
+*.log
+
+# Результаты сборки (PyInstaller и др.)
+*.spec
