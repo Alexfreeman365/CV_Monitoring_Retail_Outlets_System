@@ -1,5 +1,6 @@
 import telebot
 import ftplib
+from telebot import apihelper
 import time
 import os
 import sys
@@ -125,11 +126,23 @@ if __name__ == '__main__':
 
     ftp_host, ftp_user, ftp_pas = get_ftp_host_user_pas(cwd_path)
 
-    request = f"Введите данные:\n" \
-              f"bot_token->:\nchat_id->:\nЖурнал событий->: Нет\n{'-' * 30}"
+    request = (f"Введите данные:\n"
+               f"bot_token->:\n"
+               f"chat_id->:\n"
+               f"Журнал событий->: Нет\n"
+               f"Proxy для Telegram (опционально, локальный socks5h://127.0.0.1:2080)->:\n"
+               f"{'-' * 30}")
+
     data = request_app_description(app_name, cwd_path, request, DESCRIPTION)
-    bot_token, chat_id, ledger_msg = data
+    bot_token, chat_id, ledger_msg, proxy_url = data
     chat_id = int(chat_id)
+
+    if proxy_url and proxy_url.strip():
+        from telebot import apihelper
+        apihelper.proxy = {'https': proxy_url.strip()}
+        apihelper.CONNECT_TIMEOUT = 40
+        apihelper.READ_TIMEOUT = 40
+
     bot = telebot.TeleBot(bot_token)
     ledger_flag = ledger_msg == 'Да'
 
@@ -139,7 +152,7 @@ if __name__ == '__main__':
 
     while True:
         try:
-            ftp = ftplib.FTP(ftp_host)
+            ftp = ftplib.FTP(ftp_host, timeout=10)
             ftp.login(ftp_user, ftp_pas)
             cam_names = sorted(ftp.nlst())
             cam_names = [name for name in cam_names if name != '.cache']
@@ -198,9 +211,19 @@ if __name__ == '__main__':
                                 total_sended.clear()
                 ftp.quit()
         except Exception as error:
+            error_name = type(error).__name__
             if ledger_flag:
-                log_event(cwd_path, app_name, 'error', type(error).__name__)
-            time.sleep(5)
+                log_event(cwd_path, app_name, 'error', error_name)
+
+            # Если это сетевая ошибка (прокси или связь), ждем дольше
+            if error_name in ['OSError', 'SSLError', 'ReadTimeout', 'ConnectTimeout']:
+                print(f"Сетевая ошибка {error_name}. Ждем 30 секунд...")
+                time.sleep(30)
+                # "Сбрасываем" бота, чтобы на следующей итерации
+                # он переподключился к прокси заново
+                bot = telebot.TeleBot(bot_token)
+            else:
+                time.sleep(5)
         # print(no_connection)
         time.sleep(45)  # 45
 
