@@ -25,7 +25,8 @@ def get_ftp_host_user_pas(path=os.getcwd()):
                 ftp_user = hiFTPconfig[0]['ftp_user']
                 ftp_pas = hiFTPconfig[0]['ftp_pas']
                 break
-            except:
+            except Exception as e:
+                print(f"КРИТИЧЕСКАЯ ОШИБКА ЧТЕНИЯ DAT-ФАЙЛА ({file}): {e}", flush=True)
                 sys.exit(0)
     else:
         sys.exit(0)
