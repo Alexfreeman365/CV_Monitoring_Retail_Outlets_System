@@ -60,6 +60,17 @@ def migrate(cwd_path):
             db.write_last_day_processed(imgs, cam, cwd_path)
             print('processed_images:', cam, len(imgs), 'files')
 
+    xls_path = os.path.join(db_dir, '1_real_viscount.xlsx')
+    if os.path.exists(xls_path):
+        xls = pd.ExcelFile(xls_path)
+        for sheet in xls.sheet_names:
+            if sheet.endswith('_arc'):
+                continue
+            df = pd.read_excel(xls, sheet)
+            db.write_real_viscount(sheet, df, cwd_path, mode='replace')
+            print('real_viscount:', sheet, len(df), 'days')
+        xls.close()
+
     print('Migration done ->', db.db_path(cwd_path))
 
 

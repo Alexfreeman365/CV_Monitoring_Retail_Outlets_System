@@ -53,7 +53,6 @@ class GetDays(QThread):
         self.dd = ''
         self.cameras = []
 
-        self.language = self.main_window.language
         self.text_wait = self.main_window.text_wait
         self.text_success = self.main_window.text_success
         self.text_error = self.main_window.text_error
@@ -85,35 +84,23 @@ class GetDays(QThread):
             self.cameras_message.emit(self.cameras)
 
             if len(self.main_window.lineEdit_cam_name.text()) == 0:
-                if self.language == 'eng':
-                    text_choose_camera = '<FONT COLOR=#008000>' \
-                                         'Select a camera from the list under the "Cameras" button ' \
-                                         'and enter its name without quotes in the "Camera" field</FONT>'
-                else:
-                    text_choose_camera = '<FONT COLOR=#008000>' \
-                                         'Выберите камеру в списке под кнопкой «[Камеры]» ' \
-                                         'и введите её название без кавычек в поле «Камера»</FONT>'
+                text_choose_camera = '<FONT COLOR=#008000>' \
+                                     'Выберите камеру в списке под кнопкой «[Камеры]» ' \
+                                     'и введите её название без кавычек в поле «Камера»</FONT>'
                 self.message.emit(text_choose_camera)
                 self.enable_disable_ui.emit(True)
             else:
                 self.days, self.dd = get_days_dd()
                 if len(self.days) == 0:
-                    if self.language == 'eng':
-                        text_empty = '<FONT COLOR=#b96902>There are no media files from this camera yet</FONT>'
-                    else:
-                        text_empty = '<FONT COLOR=#b96902>Для этой камеры медиафайлов еще нет</FONT>'
+                    text_empty = '<FONT COLOR=#b96902>Для этой камеры медиафайлов еще нет</FONT>'
                     self.message.emit(text_empty)
                     self.enable_disable_ui.emit(True)
                 else:
                     text_first_day = '<FONT COLOR=#008000>{}</FONT>'.format(self.days[0])
                     text_last_day = '<FONT COLOR=#008000>{}</FONT>'.format(self.days[-1])
                     text_day_amount = '<FONT COLOR=#008000>{}</FONT>'.format(str(len(self.days)))
-                    if self.language == 'eng':
-                        text_day_range = ('First_day:' + text_first_day + ' Last_day:' +
-                                          text_last_day + ' Days:' + text_day_amount)
-                    else:
-                        text_day_range = ('Первый_день:' + text_first_day + ' Последний_день:' +
-                                          text_last_day + ' Дни:' + text_day_amount)
+                    text_day_range = ('Первый_день:' + text_first_day + ' Последний_день:' +
+                                      text_last_day + ' Дни:' + text_day_amount)
                     self.message.emit(text_day_range)
                     self.days_message.emit(self.days)
                     self.enable_disable_ui.emit(True)
@@ -168,7 +155,6 @@ class EstimateThread(QThread):
         self.text_day_files_size = ''
         self.text_total = ''
 
-        self.language = self.main_window.language
         self.text_wait = self.main_window.text_wait
 
     def run(self):
@@ -229,12 +215,8 @@ class EstimateThread(QThread):
             image_last_pc_day = '0'
             video_last_pc_day = '0'
 
-            if self.language == 'eng':
-                file_type_images = '_images'
-                file_type_record = '_videos'
-            else:
-                file_type_images = '_photos'
-                file_type_record = '_videos'
+            file_type_images = '_photos'
+            file_type_record = '_videos'
 
             if self.main_window.radioButton_images.isChecked():
                 image_path = os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type_images)
@@ -335,23 +317,15 @@ class EstimateThread(QThread):
             text_files_num = '<FONT COLOR=#008000>{}</FONT>'.format(self.files_num)
             text_size = '<FONT COLOR=#008000>{}Mb</FONT>'.format(self.day_files_size)
             text_time = '<FONT COLOR=#008000>~{}min</FONT>'.format(self.day_files_size // 46)
-            if self.language == 'eng':
-                text_total = ('Days:' + text_days_num + ' Number:' + text_files_num + ' Size:' + text_size +
-                              ' Load_time:' + text_time)
-            else:
-                text_total = ('Дни:' + text_days_num + ' Кол-во:' + text_files_num + ' Размер:' + text_size +
-                              ' Время_скачивания:' + text_time)
+            text_total = ('Дни:' + text_days_num + ' Кол-во:' + text_files_num + ' Размер:' + text_size +
+                          ' Время_скачивания:' + text_time)
             self.message.emit(text_total)
             # Enable UI
             self.enable_disable_ui.emit(True)
         except:
             self.enable_disable_ui.emit(True)
-            if self.language == 'eng':
-                text_error = '<FONT COLOR=#f4320c>Problems with estimation. ' \
-                             'Try to check the connection or your time range.</FONT>'
-            else:
-                text_error = '<FONT COLOR=#f4320c>Проблемы с оценкой. ' \
-                             'Попробуйте проверить ваш промежуток времени.</FONT>'
+            text_error = '<FONT COLOR=#f4320c>Проблемы с оценкой. ' \
+                         'Попробуйте проверить ваш промежуток времени.</FONT>'
             self.message.emit(text_error)
         # A message to the main UI thread that this working thread has finished executing its code.
         self.finished.emit()
@@ -390,7 +364,6 @@ class ParseThread(QThread):
         self.video_links_dict = {}
         self.with_deletion_status = self.main_window.radioButton_with_deletion.isChecked()
 
-        self.language = self.main_window.language
         self.text_wait = self.main_window.text_wait
         self.text_done = self.main_window.text_done
         self.max_retries = 100 # Maximum number of reconnection attempts
@@ -453,12 +426,8 @@ class ParseThread(QThread):
             image_last_pc_day = '0'
             video_last_pc_day = '0'
 
-            if self.language == 'eng':
-                file_type_images = '_images'
-                file_type_record = '_videos'
-            else:
-                file_type_images = '_photos'
-                file_type_record = '_videos'
+            file_type_images = '_photos'
+            file_type_record = '_videos'
 
             if self.main_window.radioButton_images.isChecked():
                 image_path = os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type_images)
@@ -532,12 +501,8 @@ class ParseThread(QThread):
             image_last_pc_day_filenames = []
             video_last_pc_day_filenames = []
 
-            if self.language == 'eng':
-                file_type_images = '_images'
-                file_type_record = '_videos'
-            else:
-                file_type_images = '_photos'
-                file_type_record = '_videos'
+            file_type_images = '_photos'
+            file_type_record = '_videos'
 
             if self.main_window.radioButton_images.isChecked():
                 image_path = os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type_images)
@@ -609,10 +574,7 @@ class ParseThread(QThread):
             # Creating a folder with the name of the camera's IP address.
 
             if links_dict_ == self.image_links_dict:
-                if self.language == 'eng':
-                    file_type = '_images'
-                else:
-                    file_type = '_photos'
+                file_type = '_photos'
 
                 if os.path.exists(self.main_window.output_dir + self.cam_name.split('/')[-1] + file_type):
                     pass
@@ -620,10 +582,7 @@ class ParseThread(QThread):
                     if len(self.image_links_dict) != 0:
                         os.mkdir(self.main_window.output_dir + self.cam_name.split('/')[-1] + file_type)
             else:
-                if self.language == 'eng':
-                    file_type = '_videos'
-                else:
-                    file_type = '_videos'
+                file_type = '_videos'
 
                 if os.path.exists(self.main_window.output_dir + self.cam_name.split('/')[-1] + file_type):
                     pass
@@ -767,10 +726,7 @@ class ParseThread(QThread):
 
         def downloading_pipeline_error():
             self.enable_disable_ui.emit(True)
-            if self.language == 'eng':
-                text_error = '<FONT COLOR=#f4320c>Problems with the connection or the selected time interval.</FONT>'
-            else:
-                text_error = '<FONT COLOR=#f4320c>Проблемы с соединением или выбранным промежутком времени.</FONT>'
+            text_error = '<FONT COLOR=#f4320c>Проблемы с соединением или выбранным промежутком времени.</FONT>'
             self.message.emit(text_error)
 
         def attempt_download(text_wait, mode):
@@ -797,10 +753,7 @@ class ParseThread(QThread):
             while self.main_window.radioButton_auto.isChecked():
                 try:
                     # Sending a message to the user about the need to wait
-                    if self.language == 'eng':
-                        text_wait = '<FONT COLOR=#02a8ab>-=:AUTO_ARCHIVE_REFRESHING:=-</FONT>'
-                    else:
-                        text_wait = '<FONT COLOR=#02a8ab>-=:АВТО_ОБНОВЛЕНИЕ_АРХИВА:=-</FONT>'
+                    text_wait = '<FONT COLOR=#02a8ab>-=:АВТО_ОБНОВЛЕНИЕ_АРХИВА:=-</FONT>'
 
                     if not success:
                         time.sleep(10)  # Extended pause in case of an error
@@ -808,12 +761,8 @@ class ParseThread(QThread):
 
                 except:
                     self.enable_disable_ui.emit(True)
-                    if self.language == 'eng':
-                        text_error = '<FONT COLOR=#f4320c>Problems with downloading. ' \
-                                     'Try to check your time range.</FONT>'
-                    else:
-                        text_error = '<FONT COLOR=#f4320c>Проблемы со скачиванием. ' \
-                                     'Попробуйте проверить ваш промежуток времени.</FONT>'
+                    text_error = '<FONT COLOR=#f4320c>Проблемы со скачиванием. ' \
+                                 'Попробуйте проверить ваш промежуток времени.</FONT>'
                     self.message.emit(text_error)
 
                 self.ftr_from = (datetime.now() - timedelta(hours=0, minutes=20)).strftime("%H%M%S")
@@ -857,7 +806,6 @@ class DeleteThread(QThread):
         self.day_folders = []
         self.range_days_num = 0
 
-        self.language = self.main_window.language
         self.text_wait = self.main_window.text_wait
         self.text_done = self.main_window.text_done
 
@@ -1006,10 +954,7 @@ class DeleteThread(QThread):
             self.enable_disable_ui.emit(True)
         except:
             self.enable_disable_ui.emit(True)
-            if self.language == 'eng':
-                text_error = '<FONT COLOR=#f4320c>Problems with deletion.</FONT>'
-            else:
-                text_error = '<FONT COLOR=#f4320c>Проблемы с удалением.</FONT>'
+            text_error = '<FONT COLOR=#f4320c>Проблемы с удалением.</FONT>'
             self.message.emit(text_error)
         # A message to the main UI thread that this working thread has finished executing its code.
         self.finished.emit()
@@ -1029,25 +974,15 @@ class UI(QDialog):
         self.worker_4 = None
         self.thread_4 = None
 
-        self.language = 'rus'
         uic.loadUi(get_path('ui/01_hiFTPDloader_gui_v3.ui'), self)
 
-        if self.language == 'eng':
-            self.button_delete_text = "Deletе camera media files from FTP disk:"
-            self.text_wait = '<FONT COLOR=#b96902>Wait...</FONT>'
-            self.text_success = '<FONT COLOR=#008000>Success</FONT>'
-            self.text_error = '<FONT COLOR=#f4320c>Error</FONT>'
-            self.text_getdays_problem = '<FONT COLOR=#f4320c>Problems with access. ' \
-                                        'Try to check host, user, password or connection.</FONT>'
-            self.text_done = '<FONT COLOR=#008000>Done!</FONT>'
-        else:
-            self.button_delete_text = 'Удалить файлы камеры с FTP диска:'
-            self.text_wait = '<FONT COLOR=#b96902>Ждите...</FONT>'
-            self.text_success = '<FONT COLOR=#008000>Успешно</FONT>'
-            self.text_error = '<FONT COLOR=#f4320c>Ошибка</FONT>'
-            self.text_getdays_problem = '<FONT COLOR=#f4320c>Проблемы с доступом. ' \
-                                        'Попробуйте проверить host, user, пароль и соединение.</FONT>'
-            self.text_done = '<FONT COLOR=#008000>Выполнено!</FONT>'
+        self.button_delete_text = 'Удалить файлы камеры с FTP диска:'
+        self.text_wait = '<FONT COLOR=#b96902>Ждите...</FONT>'
+        self.text_success = '<FONT COLOR=#008000>Успешно</FONT>'
+        self.text_error = '<FONT COLOR=#f4320c>Ошибка</FONT>'
+        self.text_getdays_problem = '<FONT COLOR=#f4320c>Проблемы с доступом. ' \
+                                    'Попробуйте проверить host, user, пароль и соединение.</FONT>'
+        self.text_done = '<FONT COLOR=#008000>Выполнено!</FONT>'
 
         # Removing the windows hint button of the window,
         # which is formed by default in Qt designer and adding 'Minimize' btn
@@ -1232,17 +1167,11 @@ class UI(QDialog):
         if self.radioButton_refresh.isChecked():
             self.lineEdit_day_start.setEnabled(False)
             self.lineEdit_day_end.setEnabled(False)
-            if self.language == 'eng':
-                volume_of_deleting = 'all'
-            else:
-                volume_of_deleting = 'все'
+            volume_of_deleting = 'все'
         else:
             self.lineEdit_day_start.setEnabled(True)
             self.lineEdit_day_end.setEnabled(True)
-            if self.language == 'eng':
-                volume_of_deleting = 'selected'
-            else:
-                volume_of_deleting = 'выбранные'
+            volume_of_deleting = 'выбранные'
         self.pushButton_delete_from_ftp.setText(f'{self.button_delete_text} {volume_of_deleting}')
 
     def auto_open(self):
@@ -1374,10 +1303,7 @@ class UI(QDialog):
             'rb_auto': self.radioButton_auto.isChecked()
         })
         self.save_hiFTPconfig(hiFTPconfig)
-        if self.language == 'eng':
-            self.label_wishes_thanks.setText('<FONT COLOR=#008000>Settings saved</FONT>')
-        else:
-            self.label_wishes_thanks.setText('<FONT COLOR=#008000>Настройки сохранены</FONT>')
+        self.label_wishes_thanks.setText('<FONT COLOR=#008000>Настройки сохранены</FONT>')
 
     # The following 3 functions belong to the first working thread to evaluate the user range
     def set_progress_bar_total_days_start(self, progress_days_max):
@@ -1559,10 +1485,7 @@ class UI(QDialog):
     # Button for donations
     def button_thanks_clicked(self):
         tel = f'<FONT COLOR=#b96902>{CONTACT_CARD}</FONT>'
-        if self.language == 'eng':
-            thanks_text = 'Donations to the BankCard: '
-        else:
-            thanks_text = 'Благодарность на карту Сбербанк: '
+        thanks_text = 'Благодарность на карту Сбербанк: '
         self.label_wishes_thanks.setText(thanks_text + tel + ' Aleksey')
 
     def start(self):

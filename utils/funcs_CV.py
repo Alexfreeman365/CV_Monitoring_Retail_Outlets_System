@@ -232,9 +232,7 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_n
 
     elif isinstance(change_past, str):
         # Reading manual data
-        xls = pd.ExcelFile(os.path.join(cwd_path, 'db', '1_real_viscount.xlsx'))
-        all_real_visitors = pd.read_excel(xls, short_name(cam_name))
-        xls.close()
+        all_real_visitors = db.read_real_viscount(short_name(cam_name), cwd_path)
         all_real_visitors.sort_values('date', inplace=True)
         all_real_visitors.reset_index(drop=True, inplace=True)
         all_real_days_dt = np.unique(all_real_visitors['date'].dt.date)

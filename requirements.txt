@@ -9,5 +9,8 @@ PyQt5
 pyTelegramBotAPI
 requests
 tqdm
+beautifulsoup4
 html5lib
+httpx
+httpcore
 pyinstaller

@@ -3,8 +3,6 @@ import ast
 import sqlite3
 from datetime import datetime
 
-import pandas as pd
-
 
 def db_path(cwd_path=os.getcwd()):
     """Path to the single SQLite database."""
@@ -182,6 +180,7 @@ def write_shapes(cam_name, df, cwd_path=os.getcwd(), mode='append'):
 
 def read_shapes(cam_name, cwd_path=os.getcwd()):
     """Return the shapes DataFrame in the exact CSV column layout."""
+    import pandas as pd
     conn = _connect(cwd_path)
     df = pd.read_sql_query(
         f'SELECT origin_file_name, uid8, shape_y1, shape_y2, shape_x1, shape_x2, '
@@ -204,6 +203,7 @@ def _hour_cols(df):
 
 
 def read_visitors(cam_name, cwd_path=os.getcwd()):
+    import pandas as pd
     conn = _connect(cwd_path)
     df = pd.read_sql_query('SELECT date, hour, count FROM visitors WHERE cam_name = ?', conn, params=(cam_name,))
     days = pd.read_sql_query('SELECT date, s FROM days WHERE cam_name = ?', conn, params=(cam_name,))
@@ -224,6 +224,7 @@ def read_visitors(cam_name, cwd_path=os.getcwd()):
 
 
 def write_visitors(cam_name, df, cwd_path=os.getcwd(), mode='append'):
+    import pandas as pd
     init_db(cwd_path)
     conn = _connect(cwd_path)
     hours = [c for c in _hour_cols(df)]
@@ -244,6 +245,7 @@ def write_visitors(cam_name, df, cwd_path=os.getcwd(), mode='append'):
 
 
 def read_no_seller(cam_name, cwd_path=os.getcwd()):
+    import pandas as pd
     conn = _connect(cwd_path)
     df = pd.read_sql_query('SELECT date, hour, absence_minutes FROM no_seller_time WHERE cam_name = ?', conn, params=(cam_name,))
     days = pd.read_sql_query('SELECT date, photos FROM days WHERE cam_name = ?', conn, params=(cam_name,))
@@ -264,6 +266,7 @@ def read_no_seller(cam_name, cwd_path=os.getcwd()):
 
 
 def write_no_seller(cam_name, df, cwd_path=os.getcwd(), mode='append'):
+    import pandas as pd
     init_db(cwd_path)
     conn = _connect(cwd_path)
     hours = [c for c in _hour_cols(df)]
@@ -302,6 +305,7 @@ def _mape_to_str(mape_int):
 
 
 def write_evstat(cam_name, df, cwd_path=os.getcwd(), mode='replace'):
+    import pandas as pd
     init_db(cwd_path)
     conn = _connect(cwd_path)
     hours = [c for c in _hour_cols(df)]
@@ -326,6 +330,7 @@ def write_evstat(cam_name, df, cwd_path=os.getcwd(), mode='replace'):
 
 
 def read_evstat(cam_name, cwd_path=os.getcwd()):
+    import pandas as pd
     conn = _connect(cwd_path)
     ev = pd.read_sql_query('SELECT date, hour, count_real, count_auto FROM evstat WHERE cam_name = ?', conn, params=(cam_name,))
     day = pd.read_sql_query('SELECT date, sum_real, sum_auto, err, mape FROM evstat_day WHERE cam_name = ?', conn, params=(cam_name,))
@@ -376,6 +381,7 @@ def write_last_day_processed(file_names, cam_name, cwd_path=os.getcwd()):
 # --- shape_db_info ---
 
 def read_shape_db_info(cwd_path=os.getcwd()):
+    import pandas as pd
     conn = _connect(cwd_path)
     df = pd.read_sql_query('SELECT * FROM shape_db_info', conn)
     conn.close()
@@ -403,6 +409,7 @@ def write_shape_db_info(df, cwd_path=os.getcwd()):
 
 def build_shape_db_info(cam_names, cwd_path=os.getcwd()):
     """Build the shape_db_info DataFrame from the per-camera shapes tables."""
+    import pandas as pd
     conn = _connect(cwd_path)
     rows = []
     for cam_name in cam_names:
@@ -429,3 +436,49 @@ def shapes_exist(cam_name, cwd_path=os.getcwd()):
         n = 0
     conn.close()
     return n > 0
+
+
+def shapes_count(cam_name, cwd_path=os.getcwd()):
+    conn = _connect(cwd_path)
+    try:
+        n = conn.execute(f'SELECT COUNT(*) FROM "{cam_name}_shapes_locs"').fetchone()[0]
+    except sqlite3.OperationalError:
+        n = 0
+    conn.close()
+    return n
+
+
+def read_real_viscount(cam_name, cwd_path=os.getcwd()):
+    """Return the manual count in the wide layout used by the Excel sheet."""
+    import pandas as pd
+    conn = _connect(cwd_path)
+    df = pd.read_sql_query('SELECT date, hour, count FROM real_viscount WHERE cam_name = ?', conn, params=(cam_name,))
+    conn.close()
+    if df.empty:
+        return pd.DataFrame(columns=['date', 'sum', '*'])
+    wide = df.pivot(index='date', columns='hour', values='count').fillna(0).astype(int).reset_index()
+    wide.columns.name = None
+    wide.columns = [str(c) for c in wide.columns]
+    wide['sum'] = wide[[c for c in wide.columns if c != 'date']].sum(axis=1)
+    wide['*'] = None
+    hours = [c for c in wide.columns if str(c).isdigit()]
+    wide = wide[['date'] + sorted(hours) + ['sum', '*']]
+    wide['date'] = pd.to_datetime(wide['date'])
+    return wide
+
+
+def write_real_viscount(cam_name, df, cwd_path=os.getcwd(), mode='replace'):
+    import pandas as pd
+    init_db(cwd_path)
+    conn = _connect(cwd_path)
+    hours = [c for c in _hour_cols(df)]
+    rows = []
+    for _, r in df.iterrows():
+        date = pd.to_datetime(r['date']).strftime('%Y-%m-%d')
+        for h in hours:
+            rows.append((cam_name, date, int(h), int(r[h])))
+    if mode == 'replace':
+        conn.execute('DELETE FROM real_viscount WHERE cam_name = ?', (cam_name,))
+    conn.executemany('INSERT OR REPLACE INTO real_viscount VALUES (?,?,?,?)', rows)
+    conn.commit()
+    conn.close()

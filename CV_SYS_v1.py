@@ -8,6 +8,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.funcs_CV import *
 from utils.funcs_vis_count_noseller_time import *
 from utils.funcs_TxtUI_request_app_description import *
+import utils.db as db
+
+MODEL_REL_PATH = os.path.join('venv', 'neural_network_models', 'yolov10x.pt')
 
 
 def _launch_helper(cwd_path, loc_path, name_substr):
@@ -76,7 +79,10 @@ if __name__ == '__main__':
     time.sleep(60 * 30) #2
 
     try:
-        shape_detector = YOLO(os.path.join(cwd_path, 'venv', 'neural_network_models', 'yolov10x.pt'))
+        model_path = os.path.join(cwd_path, MODEL_REL_PATH)
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f'Model not found: {model_path}')
+        shape_detector = YOLO(model_path)
 
         print('The system is loaded')
         log_event(cwd_path, app_name, 'sys', 'Starting the system')
@@ -84,13 +90,7 @@ if __name__ == '__main__':
         try:
             while True:
                 for cam_name in sorted(cam_names):
-                    cam_shapes_db_len = 0
-                    cam_shapes_path = os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv')
-                    if os.path.exists(cam_shapes_path):
-                        with open(cam_shapes_path, 'r') as f:
-                            for _ in f:
-                                cam_shapes_db_len += 1
-                        cam_shapes_db_len -= 1  # subtract the header row
+                    cam_shapes_db_len = db.shapes_count(cam_name, cwd_path)
 
                     shape_detection(shape_detector, cam_shapes_db_len, ip_cam_data_paths_dict[cam_name],
                                     cam_name, cam_names, change_past=None, cwd_path=cwd_path)
