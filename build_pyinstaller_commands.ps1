@@ -461,7 +461,7 @@ pyinstaller --onefile -w `
 --clean --runtime-tmpdir=hi_temp `
 "$pwd/10_hiSampler_v2.py"
 
-pyinstaller --onefile -w `
+python -m PyInstaller --onefile -w `
 --exclude-module altgraph `
 --exclude-module beautifulsoup4 `
 --exclude-module contourpy `
@@ -491,7 +491,6 @@ pyinstaller --onefile -w `
 --exclude-module pyqt5 `
 --exclude-module pyqt5-qt5 `
 --exclude-module pyqt5-sip `
---exclude-module pytelegrambotapi `
 --exclude-module pyyaml `
 --exclude-module scipy `
 --exclude-module soupsieve `
@@ -503,6 +502,7 @@ pyinstaller --onefile -w `
 --exclude-module ultralytics `
 --exclude-module ultralytics-thop `
 --exclude-module webencodings `
+--exclude-module IPython `
 --workpath "$pwd/temp/build" `
 --specpath "$pwd/temp/spec" `
 --clean --runtime-tmpdir=hi_temp `
