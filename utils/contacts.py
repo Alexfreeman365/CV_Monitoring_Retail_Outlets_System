@@ -1,0 +1,2 @@
+CONTACT_EMAIL = 'videonabexp@gmail.com'
+CONTACT_CARD = '5469 5400 2720 6935'

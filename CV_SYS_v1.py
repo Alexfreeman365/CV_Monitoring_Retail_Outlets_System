@@ -3,28 +3,35 @@ import telebot
 import psutil
 import sys, os, subprocess
 
-# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+# Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.funcs_CV import *
 from utils.funcs_vis_count_noseller_time import *
 from utils.funcs_TxtUI_request_app_description import *
 
 
+def _launch_helper(cwd_path, loc_path, name_substr):
+    """Launch a helper (hiFTPCleaner / CVloadAntifreeze). Priority: .exe -> .py -> skip."""
+    exe = sorted(f for f in os.listdir(loc_path) if name_substr in f and f.endswith('.exe'))
+    if exe:
+        return subprocess.Popen([os.path.join(loc_path, exe[0])], cwd=loc_path)
+
+    py = sorted(f for f in os.listdir(loc_path) if name_substr in f and f.endswith('.py'))
+    if not py:
+        py = sorted(f for f in os.listdir(cwd_path) if name_substr in f and f.endswith('.py'))
+    if py:
+        return subprocess.Popen([sys.executable, os.path.join(cwd_path, py[0])], cwd=loc_path)
+
+    log_event(cwd_path, 'CV_SYS', 'sys', f'{name_substr}: helper not found (no .exe / .py)')
+    return None
+
+
 def start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=True):
     loc_path = os.path.join(cwd_path, 'cams_media')
+    process = []
     if hiFTPCleaner:
-        hiFTPCleaner_exe = [f for f in os.listdir(loc_path)
-                            if 'hiFTPCleaner' in f
-                            and f.split('.')[-1] == 'exe'][0]
-        hiFTPCleaner_proc = subprocess.Popen([os.path.join(loc_path, hiFTPCleaner_exe)], cwd=loc_path)
-    else:
-        hiFTPCleaner_proc = None
-
-    CVloadAntifreeze_exe = [f for f in os.listdir(loc_path)
-                            if 'CVloadAntifreeze' in f
-                            and f.split('.')[-1] == 'exe'][0]
-    CVloadAntifreeze_proc = subprocess.Popen([os.path.join(loc_path, CVloadAntifreeze_exe)], cwd=loc_path)
-    process = [hiFTPCleaner_proc, CVloadAntifreeze_proc]
+        process.append(_launch_helper(cwd_path, loc_path, 'hiFTPCleaner'))
+    process.append(_launch_helper(cwd_path, loc_path, 'CVloadAntifreeze'))
     return [p for p in process if p]
 
 
@@ -83,7 +90,7 @@ if __name__ == '__main__':
                         with open(cam_shapes_path, 'r') as f:
                             for _ in f:
                                 cam_shapes_db_len += 1
-                        cam_shapes_db_len -= 1  # Вычитаем заголовок
+                        cam_shapes_db_len -= 1  # subtract the header row
 
                     shape_detection(shape_detector, cam_shapes_db_len, ip_cam_data_paths_dict[cam_name],
                                     cam_name, cam_names, change_past=None, cwd_path=cwd_path)

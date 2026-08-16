@@ -7,9 +7,12 @@ import pandas as pd
 import sys
 import os
 
-# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+# Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.funcs_TxtUI_request_app_description import get_path, cleanup_mei_folders
+from utils.contacts import CONTACT_EMAIL, CONTACT_CARD
+from utils.funcs_initializer_camconfig_getcamframe import load_camconfig, dt_slice_shape_df
+import utils.db as db
 
 import atexit
 atexit.register(cleanup_mei_folders)
@@ -23,7 +26,7 @@ class ShowCams(QWidget):
         self.setWindowTitle('Выберете камеру')
         lay = QVBoxLayout(self)
 
-        camconfig = self.load_camconfig()
+        camconfig = load_camconfig()
         cam_names = [cam['cam_name'] for cam in camconfig]
 
         for cam in cam_names:
@@ -35,19 +38,12 @@ class ShowCams(QWidget):
         centerPoint = QDesktopWidget().availableGeometry().center()
         self.setGeometry(centerPoint.x()-292, centerPoint.y()-205, 0, 0)
 
-    def load_camconfig(self):
-        camconfig = []
-        if os.path.exists(os.path.join(os.getcwd(), 'db', 'camconfig.csv')):
-            camconfig = pd.read_csv(os.path.join(os.getcwd(), 'db', 'camconfig.csv'))
-            camconfig = camconfig.to_dict(orient='records')
-        return camconfig
-
     def button_clicked(self):
         clicked_button = self.sender()
         cam_name = clicked_button.text()
         self.main_window.le_cam_name.setText(cam_name)
 
-        cam_shapes = pd.read_csv(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv'))
+        cam_shapes = db.read_shapes(cam_name, os.getcwd())
         first_day_all = cam_shapes.iloc[0]['origin_file_name'][:6]
         last_day_all = cam_shapes.iloc[-1]['origin_file_name'][:6]
         len_all = str(len(cam_shapes))
@@ -82,16 +78,10 @@ class EstimateThread(QThread):
         self.main_window = main_window
 
     def run(self):
-        def dt_slice_shape_df(df_cam, dt_start, dt_end):
-            df = df_cam.copy()
-            dt_end_full = str(int(dt_end) + 1)
-            df['dt'] = df['uid8'].apply(lambda x: str(x)[:10])
-            return df[(df['dt'] >= dt_start) & (df['dt'] < dt_end_full)].iloc[:, 0:-1]
-
         try:
             cam_name = self.main_window.le_cam_name.text()
             cutoff_day = self.main_window.le_cutoff_day.text()
-            cam_shapes = pd.read_csv(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv'))
+            cam_shapes = db.read_shapes(cam_name, os.getcwd())
             cam_shapes = cam_shapes.sort_values('uid8')
             cam_shapes = cam_shapes.reset_index(drop=True)
             last_day_all = cam_shapes.iloc[-1]['origin_file_name'][:6]
@@ -128,16 +118,10 @@ class LetsArchiveThread(QThread):
         self.main_window = main_window
 
     def run(self):
-        def dt_slice_shape_df(df_cam, dt_start, dt_end):
-            df = df_cam.copy()
-            dt_end_full = str(int(dt_end) + 1)
-            df['dt'] = df['uid8'].apply(lambda x: str(x)[:10])
-            return df[(df['dt'] >= dt_start) & (df['dt'] < dt_end_full)].iloc[:, 0:-1]
-
         try:
             cam_name = self.main_window.le_cam_name.text()
             cutoff_day = self.main_window.le_cutoff_day.text()
-            cam_shapes = pd.read_csv(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv'))
+            cam_shapes = db.read_shapes(cam_name, os.getcwd())
             cam_shapes = cam_shapes.sort_values('uid8')
             cam_shapes = cam_shapes.reset_index(drop=True)
             last_day_all = cam_shapes.iloc[-1]['origin_file_name'][:6]
@@ -166,7 +150,7 @@ class LetsArchiveThread(QThread):
                 os.mkdir(arc_folder_path)
 
             archive_shapes.to_csv(os.path.join(arc_folder_path, f'{cam_name}_shapes_locs.csv'), index=False)
-            remaining_shapes.to_csv(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv'), index=False)
+            db.write_shapes(cam_name, remaining_shapes, os.getcwd(), mode='replace')
             self.output_message.emit(self.main_window.text_done)
             self.finished.emit()
         except:
@@ -245,13 +229,6 @@ class UI(QDialog):
         self.ShowCams = ShowCams(main_window=self)
         self.ShowCams.show()
 
-    def load_camconfig(self):
-        camconfig = []
-        if os.path.exists(os.path.join(os.getcwd(), 'db', 'camconfig.csv')):
-            camconfig = pd.read_csv(os.path.join(os.getcwd(), 'db', 'camconfig.csv'))
-            camconfig = camconfig.to_dict(orient='records')
-        return camconfig
-
     def sending_first_day_rem(self, message):
         self.lbl_first_rem.setText(f'<FONT COLOR=#008000>{message}</FONT>')
         self.label_out.setText(' ')
@@ -321,12 +298,12 @@ class UI(QDialog):
         self.run_LetsArchiveThread()
 
     def button_wishes_clicked(self):
-        email = '<FONT COLOR=#b96902>videonabexp@gmail.com</FONT>'
+        email = f'<FONT COLOR=#b96902>{CONTACT_EMAIL}</FONT>'
         self.label_wishes_thanks.setText('E-mail: ' + email)
         self.label_out.setText('')
 
     def button_thanks_clicked(self):
-        tel = '<FONT COLOR=#b96902>5469 5400 2720 6935</FONT>'
+        tel = f'<FONT COLOR=#b96902>{CONTACT_CARD}</FONT>'
         self.label_wishes_thanks.setText('Благодарность на карту Сбербанк: ' + tel + ' Алексей')
         self.label_out.setText('')
 

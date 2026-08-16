@@ -14,9 +14,13 @@ import sys
 import os
 import shutil
 
-# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+# Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.funcs_TxtUI_request_app_description import get_path, cleanup_mei_folders
+from utils.contacts import CONTACT_EMAIL, CONTACT_CARD
+from utils.funcs_CV import get_coords_from_text, detection_zone_intersection
+from utils.funcs_initializer_camconfig_getcamframe import dt_slice_shape_df
+import utils.db as db
 
 import atexit
 atexit.register(cleanup_mei_folders)
@@ -107,45 +111,6 @@ class SetZoneWindow(QWidget):
 
         self.begin, self.destination = QPoint(), QPoint()
 
-    def load_camconfig(self):
-        camconfig = []
-        if os.path.exists(os.path.join(os.getcwd(), 'db', 'camconfig.csv')):
-            camconfig = pd.read_csv(os.path.join(os.getcwd(), 'db', 'camconfig.csv'))
-            camconfig = camconfig.to_dict(orient='records')
-        return camconfig
-
-    def save_camconfig(self, camconfig):
-        camconfig = pd.DataFrame(camconfig)
-        camconfig.to_csv(os.path.join(os.getcwd(), 'db', 'camconfig.csv'), index=False)
-
-    def get_coords_from_text(self, coords):
-        if len(coords.split(',')) == 4:
-            # Single zone coords
-            dirty_list = coords[1:-1].split(',')
-            ymin = int(dirty_list[0])
-            ymax = int(dirty_list[1][1:])
-            xmin = int(dirty_list[2][1:])
-            xmax = int(dirty_list[3][1:])
-            return ymin, ymax, xmin, xmax
-
-        if len(coords.split(',')) == 8:
-            # Double zone coords
-            l0 = coords.split(')')[0][2:].split(',')
-            t0 = tuple(np.array(l0, dtype='int'))
-            l1 = coords.split(')')[1][3:].split(',')
-            t1 = tuple(np.array(l1, dtype='int'))
-            return [t0, t1]
-
-        if len(coords.split(',')) == 12:
-            # Triple zone coords
-            l0 = coords.split(')')[0][2:].split(',')
-            t0 = tuple(np.array(l0, dtype='int'))
-            l1 = coords.split(')')[1][3:].split(',')
-            t1 = tuple(np.array(l1, dtype='int'))
-            l2 = coords.split(')')[2][3:].split(',')
-            t2 = tuple(np.array(l2, dtype='int'))
-            return [t0, t1, t2]
-
     def paintEvent(self, event):
         painter = QPainter(self)
         pen = QPen(Qt.yellow, 2)
@@ -203,100 +168,11 @@ class EstimateThread(QThread):
         self.main_window = main_window
 
     def run(self):
-        def dt_slice_shape_df(df_cam, dt_start, dt_end):
-            df = df_cam.copy()
-            dt_end_full = str(int(dt_end) + 1)
-            df['dt'] = df['uid8'].apply(lambda x: str(x)[:10])
-            return df[(df['dt'] >= dt_start) & (df['dt'] <= dt_end_full)]
-
-        def get_coords_from_text(coords):
-            if len(coords.split(',')) == 4:
-                # Single zone coords
-                dirty_list = coords[1:-1].split(',')
-                ymin = int(dirty_list[0])
-                ymax = int(dirty_list[1][1:])
-                xmin = int(dirty_list[2][1:])
-                xmax = int(dirty_list[3][1:])
-                return ymin, ymax, xmin, xmax
-
-            if len(coords.split(',')) == 8:
-                # Double zone coords
-                l0 = coords.split(')')[0][2:].split(',')
-                t0 = tuple(np.array(l0, dtype='int'))
-                l1 = coords.split(')')[1][3:].split(',')
-                t1 = tuple(np.array(l1, dtype='int'))
-                return [t0, t1]
-
-            if len(coords.split(',')) == 12:
-                # Triple zone coords
-                l0 = coords.split(')')[0][2:].split(',')
-                t0 = tuple(np.array(l0, dtype='int'))
-                l1 = coords.split(')')[1][3:].split(',')
-                t1 = tuple(np.array(l1, dtype='int'))
-                l2 = coords.split(')')[2][3:].split(',')
-                t2 = tuple(np.array(l2, dtype='int'))
-                return [t0, t1, t2]
-
         def zone_intersections(df, zone_coords):
             df = df.copy()
             df['alarm_intersection'] = df['shape_location'].apply(
                 lambda x: detection_zone_intersection(get_coords_from_text(x), zone_coords))
             return df[df['alarm_intersection'] == 1].iloc[:, 0:-1]
-
-        def detection_zone_intersection(shape_location, zone_coords):
-            if len(str(zone_coords).split(',')) == 4:
-                # Single_zone_intersection
-                ymin, ymax, xmin, xmax = shape_location
-
-                if type(zone_coords) == tuple:
-                    y1, y2, x1, x2 = zone_coords
-                else:
-                    y1, y2, x1, x2 = get_coords_from_text(zone_coords)
-
-                dx = min(xmax, x2) - max(xmin, x1)
-                dy = min(ymax, y2) - max(ymin, y1)
-
-                if (dx >= 0) and (dy >= 0):
-                    return 1
-                else:
-                    return 0
-
-            if len(str(zone_coords).split(',')) == 8:
-                # Double_zone_intersection
-                ymin, ymax, xmin, xmax = shape_location
-
-                y01, y02, x01, x02 = get_coords_from_text(zone_coords)[0]
-                y11, y12, x11, x12 = get_coords_from_text(zone_coords)[1]
-
-                dx0 = min(xmax, x02) - max(xmin, x01)
-                dy0 = min(ymax, y02) - max(ymin, y01)
-                dx1 = min(xmax, x12) - max(xmin, x11)
-                dy1 = min(ymax, y12) - max(ymin, y11)
-
-                if ((dx0 >= 0) and (dy0 >= 0)) | ((dx1 >= 0) and (dy1 >= 0)):
-                    return 1
-                else:
-                    return 0
-
-            if len(str(zone_coords).split(',')) == 12:
-                # Triple_zone_intersection
-                ymin, ymax, xmin, xmax = shape_location
-
-                y01, y02, x01, x02 = get_coords_from_text(zone_coords)[0]
-                y11, y12, x11, x12 = get_coords_from_text(zone_coords)[1]
-                y21, y22, x21, x22 = get_coords_from_text(zone_coords)[2]
-
-                dx0 = min(xmax, x02) - max(xmin, x01)
-                dy0 = min(ymax, y02) - max(ymin, y01)
-                dx1 = min(xmax, x12) - max(xmin, x11)
-                dy1 = min(ymax, y12) - max(ymin, y11)
-                dx2 = min(xmax, x22) - max(xmin, x21)
-                dy2 = min(ymax, y22) - max(ymin, y21)
-
-                if ((dx0 >= 0) and (dy0 >= 0)) | ((dx1 >= 0) and (dy1 >= 0)) | ((dx2 >= 0) and (dy2 >= 0)):
-                    return 1
-                else:
-                    return 0
 
         ip_cam_data_paths_dict = self.main_window.ip_cam_data_paths_dict
         cam_names = self.main_window.cam_names
@@ -324,7 +200,7 @@ class EstimateThread(QThread):
                     self.enable_disable_ui.emit(False)
                     df_cam = pd.DataFrame()
                     if os.path.exists(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv')):
-                        df_cam = pd.read_csv(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv'))
+                        df_cam = db.read_shapes(cam_name, os.getcwd())
 
                     slice_df = dt_slice_shape_df(df_cam, date_start, date_end)
 
@@ -391,46 +267,12 @@ class ParseThread(QThread):
         self.main_window = main_window
 
     def run(self):
-        def dt_slice_shape_df(df_cam, dt_start, dt_end):
-            df = df_cam.copy()
-            dt_end_full = str(int(dt_end) + 1)
-            df['dt'] = df['uid8'].apply(lambda x: str(x)[:10])
-            return df[(df['dt'] >= dt_start) & (df['dt'] < dt_end_full)].iloc[:, 0:-1]
-
-        def get_coords_from_text(coords):
-            if len(coords.split(',')) == 4:
-                # Single zone coords
-                dirty_list = coords[1:-1].split(',')
-                ymin = int(dirty_list[0])
-                ymax = int(dirty_list[1][1:])
-                xmin = int(dirty_list[2][1:])
-                xmax = int(dirty_list[3][1:])
-                return ymin, ymax, xmin, xmax
-
-            if len(coords.split(',')) == 8:
-                # Double zone coords
-                l0 = coords.split(')')[0][2:].split(',')
-                t0 = tuple(np.array(l0, dtype='int'))
-                l1 = coords.split(')')[1][3:].split(',')
-                t1 = tuple(np.array(l1, dtype='int'))
-                return [t0, t1]
-
-            if len(coords.split(',')) == 12:
-                # Triple zone coords
-                l0 = coords.split(')')[0][2:].split(',')
-                t0 = tuple(np.array(l0, dtype='int'))
-                l1 = coords.split(')')[1][3:].split(',')
-                t1 = tuple(np.array(l1, dtype='int'))
-                l2 = coords.split(')')[2][3:].split(',')
-                t2 = tuple(np.array(l2, dtype='int'))
-                return [t0, t1, t2]
-
         def rectangle_on_shape(img, shape_location, star_position='right'):
             y1, y2, x1, x2 = shape_location
             draw = ImageDraw.Draw(img)
 
             if star_position == 'right':
-                # Желтый прямоугольник и звездочка справа
+                # yellow rectangle and star on the right
                 draw.rectangle(((x1, y1), (x2, y2)), outline='#ffff14', width=3)
                 draw.ellipse([(x2 - 20, y1 + 2), (x2 - 5, y1 + 17)], fill='#ffff14', outline='#ffff14')
                 try:
@@ -439,7 +281,7 @@ class ParseThread(QThread):
                 except:
                     draw.text((x2 - 16, y1 + 3), "*", fill='#000000')
             else:
-                # Красный прямоугольник и звездочка слева
+                # red rectangle and star on the left
                 draw.rectangle(((x1, y1), (x2, y2)), outline='red', width=3)
                 draw.ellipse([(x1 + 2, y1 + 2), (x1 + 17, y1 + 17)], fill='red', outline='red')
                 try:
@@ -471,61 +313,6 @@ class ParseThread(QThread):
             df['alarm_intersection'] = df['shape_location'].apply(
                 lambda x: detection_zone_intersection(get_coords_from_text(x), zone_coords))
             return df[df['alarm_intersection'] == 1].iloc[:, 0:-1]
-
-        def detection_zone_intersection(shape_location, zone_coords):
-            if len(str(zone_coords).split(',')) == 4:
-                # Single_zone_intersection
-                ymin, ymax, xmin, xmax = shape_location
-
-                if type(zone_coords) == tuple:
-                    y1, y2, x1, x2 = zone_coords
-                else:
-                    y1, y2, x1, x2 = get_coords_from_text(zone_coords)
-
-                dx = min(xmax, x2) - max(xmin, x1)
-                dy = min(ymax, y2) - max(ymin, y1)
-
-                if (dx >= 0) and (dy >= 0):
-                    return 1
-                else:
-                    return 0
-
-            if len(str(zone_coords).split(',')) == 8:
-                # Double_zone_intersection
-                ymin, ymax, xmin, xmax = shape_location
-
-                y01, y02, x01, x02 = get_coords_from_text(zone_coords)[0]
-                y11, y12, x11, x12 = get_coords_from_text(zone_coords)[1]
-
-                dx0 = min(xmax, x02) - max(xmin, x01)
-                dy0 = min(ymax, y02) - max(ymin, y01)
-                dx1 = min(xmax, x12) - max(xmin, x11)
-                dy1 = min(ymax, y12) - max(ymin, y11)
-
-                if ((dx0 >= 0) and (dy0 >= 0)) | ((dx1 >= 0) and (dy1 >= 0)):
-                    return 1
-                else:
-                    return 0
-
-            if len(str(zone_coords).split(',')) == 12:
-                # Triple_zone_intersection
-                ymin, ymax, xmin, xmax = shape_location
-
-                y01, y02, x01, x02 = get_coords_from_text(zone_coords)[0]
-                y11, y12, x11, x12 = get_coords_from_text(zone_coords)[1]
-                y21, y22, x21, x22 = get_coords_from_text(zone_coords)[2]
-
-                dx0 = min(xmax, x02) - max(xmin, x01)
-                dy0 = min(ymax, y02) - max(ymin, y01)
-                dx1 = min(xmax, x12) - max(xmin, x11)
-                dy1 = min(ymax, y12) - max(ymin, y11)
-                dx2 = min(xmax, x22) - max(xmin, x21)
-                dy2 = min(ymax, y22) - max(ymin, y21)
-
-                if ((dx0 >= 0) and (dy0 >= 0)) | ((dx1 >= 0) and (dy1 >= 0)) | ((dx2 >= 0) and (dy2 >= 0)):
-                    return 1
-                else:
-                    return 0
 
         def get_rectangled_images(df_dt, rectangle_status, shape_zone_status, face_zone_status):
             df = df_dt.copy()
@@ -610,7 +397,7 @@ class ParseThread(QThread):
 
                     df_cam = pd.DataFrame()
                     if os.path.exists(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv')):
-                        df_cam = pd.read_csv(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv'))
+                        df_cam = db.read_shapes(cam_name, os.getcwd())
 
                     total_df = dt_slice_shape_df(df_cam, date_start, date_end)
 
@@ -873,13 +660,13 @@ class UI(QDialog):
         # Feedback button
 
     def button_wishes_clicked(self):
-        email = '<FONT COLOR=#b96902>videonabexp@gmail.com</FONT>'
+        email = f'<FONT COLOR=#b96902>{CONTACT_EMAIL}</FONT>'
         self.label_wishes_thanks.setText('E-mail: ' + email)
 
         # Button for donations
 
     def button_thanks_clicked(self):
-        tel = '<FONT COLOR=#b96902>5469 5400 2720 6935</FONT>'
+        tel = f'<FONT COLOR=#b96902>{CONTACT_CARD}</FONT>'
         self.label_wishes_thanks.setText('Благодарность на карту Сбербанк: ' + tel + ' Алексей')
 
 

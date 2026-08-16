@@ -3,7 +3,7 @@ from datetime import timedelta
 import sys
 import os
 
-# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+# Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.funcs_FTP_access_cams_media_structure import *
 from utils.funcs_TxtUI_request_app_description import *
@@ -109,7 +109,7 @@ DESCRIPTION = (
 
 if __name__ == '__main__':
     cwd_path = os.getcwd()
-    app_name = os.path.basename(sys.executable).split('.')[0]
+    app_name = get_app_name()
 
     request = f"Введите данные >>>\n" \
               f"Временное окно в днях->:\nПериод проверки в часах->:\nЖурнал событий->: Нет\n{'-' * 30}"

@@ -1,6 +1,7 @@
 import cv2
 from tqdm import tqdm
 import numpy as np
+import pandas as pd
 
 import sys
 import os
@@ -8,9 +9,10 @@ import time
 import csv
 from datetime import datetime
 
-# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+# Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.funcs_initializer_camconfig_getcamframe import *
+import utils.db as db
 from utils.funcs_TxtUI_request_app_description import log_event
 from utils.funcs_vis_count_noseller_time import (short_name,
                                                  vis_count_noseller_pipeline)
@@ -47,32 +49,9 @@ def get_coords_from_text(coords):
 
 def save_shape_db_info(cam_names, cwd_path=os.getcwd()):
     if len(cam_names) != 0:
-        shape_db_info = []
-        for cam_name in cam_names:
-            cam_shapes_path = os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv')
-            if os.path.exists(cam_shapes_path):
-                with open(cam_shapes_path, 'r', newline='') as csvfile:
-                    reader = csv.DictReader(csvfile)
-                    header = next(reader)
-
-                    first_row = next(reader)
-                    first_day = first_row['origin_file_name'][:6]
-
-                    df_cam_len = 1
-                    last_day = first_day
-
-                    for row in reader:
-                        df_cam_len += 1
-                        last_day = row['origin_file_name'][:6]
-
-                row = {'Camera': cam_name, 'File_name': f'{cam_name}_shapes_locs.csv',
-                       'First_day': datetime.strptime(first_day, '%y%m%d'),
-                       'Last_day': datetime.strptime(last_day, '%y%m%d'),
-                       'Number_of_lines': df_cam_len}
-                shape_db_info.append(row)
-
-        shape_db_info = pd.DataFrame(shape_db_info)
-        shape_db_info.to_csv(os.path.join(cwd_path, 'db', 'shape_db_info.csv'), index=False)
+        shape_db_info = db.build_shape_db_info(cam_names, cwd_path)
+        if not shape_db_info.empty:
+            db.write_shape_db_info(shape_db_info, cwd_path)
 
 
 def get_first_part(i):
@@ -166,21 +145,21 @@ def is_duplicate_detection(new_box, existing_boxes, similarity_threshold=0.9, ma
         ex_x1, ex_y1, ex_x2, ex_y2 = existing_box
         ex_area = (ex_x2 - ex_x1) * (ex_y2 - ex_y1)
 
-        # Проверяем центр bounding box'а
+        # check the center of the bounding box
         new_center_x = (new_x1 + new_x2) / 2
         new_center_y = (new_y1 + new_y2) / 2
         ex_center_x = (ex_x1 + ex_x2) / 2
         ex_center_y = (ex_y1 + ex_y2) / 2
 
-        # Расстояние между центрами
+        # distance between centers
         center_distance = ((new_center_x - ex_center_x) ** 2 +
                            (new_center_y - ex_center_y) ** 2) ** 0.5
 
-        # Проверяем размеры bounding box'ов
+        # compare bounding box sizes
         width_diff = abs((new_x2 - new_x1) - (ex_x2 - ex_x1))
         height_diff = abs((new_y2 - new_y1) - (ex_y2 - ex_y1))
 
-        # Проверяем перекрытие по IoU (Intersection over Union)
+        # check overlap by IoU (Intersection over Union)
         x1 = max(new_x1, ex_x1)
         y1 = max(new_y1, ex_y1)
         x2 = min(new_x2, ex_x2)
@@ -190,9 +169,9 @@ def is_duplicate_detection(new_box, existing_boxes, similarity_threshold=0.9, ma
         union = new_area + ex_area - intersection
         iou = intersection / union if union > 0 else 0
 
-        # Критерии для определения дубликата:
-        # 1. Высокое IoU (> 0.8) ИЛИ
-        # 2. Близкие центры (< 20 пикселей) И похожие размеры
+        # duplicate criteria:
+        # 1. high IoU (> 0.8) OR
+        # 2. close centers (< 20 px) AND similar sizes
         is_duplicate = (
                 (iou > similarity_threshold) or
                 (center_distance < max_pixel_diff and
@@ -208,19 +187,17 @@ def is_duplicate_detection(new_box, existing_boxes, similarity_threshold=0.9, ma
 
 
 def change_past_process(cam_name, day, cwd_path, df_new):
-    file_path = os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv')
-
-    if os.path.exists(file_path):
-        df_existing = pd.read_csv(file_path)
+    df_existing = db.read_shapes(cam_name, cwd_path)
+    if not df_existing.empty:
         df_filtered = dt_slice_shape_df(df_existing, day, day)
         df_remaining = df_existing[~df_existing.index.isin(df_filtered.index)]
 
         df_combined = pd.concat([df_remaining, df_new])
         df_final = df_combined.sort_values('origin_file_name').reset_index(drop=True)
-        df_final.to_csv(file_path, index=False)
+        db.write_shapes(cam_name, df_final, cwd_path, mode='replace')
     else:
         df_new_sorted = df_new.sort_values('origin_file_name').reset_index(drop=True)
-        df_new_sorted.to_csv(file_path, index=False)
+        db.write_shapes(cam_name, df_new_sorted, cwd_path, mode='replace')
 
 
 def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_name,
@@ -279,11 +256,11 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_n
 
         if (change_past is None and last_seen_day != last_day and
                 (not cam_name[-1].isdigit() or cam_name[-1] == '1') and
-                os.path.exists(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))):
+                db.shapes_exist(cam_name, cwd_path)):
             vis_count_noseller_pipeline(cam_name, images_path, cwd_path)
             save_shape_db_info(cam_names)
 
-        # countdown = 0 # Визуализация отсчета при тестах
+        # countdown = 0  # countdown visualisation during tests
         for image_name in tqdm(cam_imgs_dict[day], desc=f'{cam_name}: '):  # tqdm
             if (image_name not in last_day_processed_imgs
                     and get_first_part(image_name) != 'Thumbs'):
@@ -293,7 +270,7 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_n
                     time.sleep(2)
 
                 try:
-                    # ЗДЕСЬ ВАЖНО: YOLO принимает BGR (cv2.imread), конвертация в RGB не нужна!
+                    # IMPORTANT: YOLO takes BGR (cv2.imread), no RGB conversion needed!
                     img = cv2.imread(os.path.join(images_path, day, image_name))
                 except:
                     print('Problem with: ', image_name, cam_name)
@@ -305,7 +282,7 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_n
 
                 results = shape_detector(img, verbose=False)  # verbose=False чтобы не выводить прогрес в консоль
 
-                # YOLO уже применяет NMS, поэтому просто берем результат
+                # YOLO already applies NMS, so just take the result
                 result = results[0]  # берем первый (и единственный) результат для одного изображения
                 imH, imW, imC = img.shape
 
@@ -314,34 +291,34 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_n
                     classIndexes = result.boxes.cls.cpu().numpy().astype(np.int32)  # классы
                     classScores = result.boxes.conf.cpu().numpy()  # уверенности
 
-                    # Фильтруем только людей (класс 0 в COCO для YOLO)
+                    # keep only people (class 0 in COCO for YOLO)
                     person_indices = [i for i, cls in enumerate(classIndexes) if cls == 0 and classScores[i] >= 0.5]
 
-                    # Список для отслеживания уже обработанных bbox'ов в этом кадре
+                    # list to track already-processed boxes in this frame
                     current_frame_boxes = []
                     duplicate_count = 0
 
                     for i in person_indices:
                         bbox = boxes[i]
-                        # classConfidence = round(100 * classScores[i])  # если нужен процент
+                        # classConfidence = round(100 * classScores[i])  # if a percentage is needed
 
-                        # Координаты уже в пикселях!
+                        # coordinates are already in pixels!
                         xmin, ymin, xmax, ymax = bbox.astype(int)
 
-                        # Фильтр по минимальному размеру человека (избегаем мелких шумов)
+                        # filter by minimum person size (avoid small noise)
                         # person_height = ymax - ymin
                         # person_width = xmax - xmin
                         # person_area = person_height * person_width
 
-                        # if person_area < 2000:  # Минимальная площадь в пикселях
-                        # continue  # Пропускаем слишком маленькие объекты
+                        # if person_area < 2000:  # minimum area in pixels
+                        # continue  # skip too-small objects
 
-                        # Проверяем на дубликаты в текущем кадре
+                        # check for duplicates in the current frame
                         if is_duplicate_detection([xmin, ymin, xmax, ymax], current_frame_boxes):
                             duplicate_count += 1
                             continue  # Пропускаем дубликат
 
-                        # Добавляем в список обработанных
+                        # add to the processed list
                         current_frame_boxes.append([xmin, ymin, xmax, ymax])
 
                         shape_location = [ymin, ymax, xmin, xmax]  # сохраняем ваш формат [y1, y2, x1, x2]
@@ -365,7 +342,7 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_n
                                      'face_zone': face_alarm}
                         shapes_locs.append(shape_loc)
 
-                    # Логирование дубликатов (опционально)
+                    # log duplicates (optional)
                     if duplicate_count > 0:
                         print(f"{cam_name} {image_name}: filtered {duplicate_count} duplicate detections")
                 if change_past is None:
@@ -376,11 +353,7 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_n
 
         df_new = pd.DataFrame(shapes_locs)
         if change_past is None:
-            if os.path.exists(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv')):
-                df_new.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'),
-                              mode='a', header=False, index=False)
-            else:
-                df_new.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'), index=False)
+            db.write_shapes(cam_name, df_new, cwd_path, mode='append')
         else:
             change_past_process(cam_name, day[2:], cwd_path, df_new)
 

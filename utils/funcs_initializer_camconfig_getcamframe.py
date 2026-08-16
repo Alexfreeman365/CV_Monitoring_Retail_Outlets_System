@@ -1,7 +1,7 @@
-import pandas as pd
-from PIL import Image
 import os
+from PIL import Image
 
+import utils.db as db
 
 
 def initializer(cwd_path=os.getcwd()):
@@ -15,31 +15,12 @@ def initializer(cwd_path=os.getcwd()):
     cam_names = ['_'.join(str(item).split('_')[:-1]) for item in ip_cam_data_folders]
     ip_cam_data_paths_dict = dict(zip(cam_names, ip_cam_data_paths))
 
-    if os.path.exists(os.path.join(cwd_path, 'db')):
-        pass
-    else:
-        os.mkdir(os.path.join(cwd_path, 'db'))
+    os.makedirs(os.path.join(cwd_path, 'db'), exist_ok=True)
 
-    if os.path.exists(os.path.join(cwd_path, 'db', 'camconfig.csv')):
-        camconfig = load_camconfig(cwd_path)
-        for cam_name in cam_names:
-            frame = get_cam_frame(cam_name, ip_cam_data_paths_dict)
-            if cam_name not in [cam_set['cam_name'] for cam_set in camconfig]:
-                camconfig.append({
-                    'cam_name': cam_name,
-                    'shape_zone': frame,
-                    'face_zone': (round(frame[1] * 0.65), frame[1], frame[2], frame[3]),
-                    'frame': frame,
-                    'work_hours': (10, 21),
-                    'vis_count_alg': (2, 2)
-                })
-        camconfig = [cam_set for cam_set in camconfig if cam_set['cam_name'] in cam_names]
-        save_camconfig(camconfig, cwd_path)
-
-    else:
-        camconfig = []
-        for cam_name in cam_names:
-            frame = get_cam_frame(cam_name, ip_cam_data_paths_dict)
+    camconfig = load_camconfig(cwd_path)
+    for cam_name in cam_names:
+        frame = get_cam_frame(cam_name, ip_cam_data_paths_dict)
+        if cam_name not in [cam_set['cam_name'] for cam_set in camconfig]:
             camconfig.append({
                 'cam_name': cam_name,
                 'shape_zone': frame,
@@ -48,21 +29,17 @@ def initializer(cwd_path=os.getcwd()):
                 'work_hours': (10, 21),
                 'vis_count_alg': (2, 2)
             })
-        save_camconfig(camconfig, cwd_path)
+    camconfig = [cam_set for cam_set in camconfig if cam_set['cam_name'] in cam_names]
+    save_camconfig(camconfig, cwd_path)
     return ip_cam_data_paths_dict, cam_names
 
 
 def load_camconfig(path=os.getcwd()):
-    camconfig = []
-    if os.path.exists(os.path.join(path, 'db', 'camconfig.csv')):
-        camconfig = pd.read_csv(os.path.join(path, 'db', 'camconfig.csv'))
-        camconfig = camconfig.to_dict(orient='records')
-    return camconfig
+    return db.load_camconfig(path)
 
 
 def save_camconfig(camconfig, cwd_path=os.getcwd()):
-    camconfig = pd.DataFrame(camconfig)
-    camconfig.to_csv(os.path.join(cwd_path, 'db', 'camconfig.csv'), index=False)
+    db.save_camconfig(camconfig, cwd_path)
 
 
 def get_cam_frame(cam_name, ip_cam_data_paths_dict):
@@ -82,17 +59,8 @@ def dt_slice_shape_df(df_cam, dt_start, dt_end):
 
 
 def load_last_day_processed_imgs(cam_name, cwd_path=os.getcwd()):
-    last_day_processed_imgs = []
-    if os.path.exists(os.path.join(cwd_path, 'db', f'{cam_name}_last_day_processed_imgs.csv')):
-        last_day_processed_imgs = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_last_day_processed_imgs.csv'))
-        if len(last_day_processed_imgs) <= 1:
-            last_day_processed_imgs = [str(last_day_processed_imgs.squeeze())]
-        else:
-            last_day_processed_imgs = last_day_processed_imgs.squeeze().to_list()
-    return last_day_processed_imgs
+    return db.read_last_day_processed(cam_name, cwd_path)
 
 
 def save_last_day_processed_imgs(last_day_processed_imgs, cam_name, cwd_path=os.getcwd()):
-    last_day_processed_imgs = pd.Series(last_day_processed_imgs)
-    last_day_processed_imgs.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_last_day_processed_imgs.csv'), index=False)
-
+    db.write_last_day_processed(last_day_processed_imgs, cam_name, cwd_path)

@@ -12,9 +12,10 @@ from datetime import datetime, timedelta
 import pickle
 import ftplib
 
-# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+# Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.funcs_TxtUI_request_app_description import get_path, log_event, cleanup_mei_folders
+from utils.funcs_TxtUI_request_app_description import get_path, log_event, cleanup_mei_folders, get_app_name
+from utils.contacts import CONTACT_EMAIL, CONTACT_CARD
 
 import atexit
 atexit.register(cleanup_mei_folders)
@@ -393,7 +394,7 @@ class ParseThread(QThread):
         self.text_wait = self.main_window.text_wait
         self.text_done = self.main_window.text_done
         self.max_retries = 100 # Maximum number of reconnection attempts
-        self.app_name = QtCore.QCoreApplication.arguments()[0].split('\\')[-1].split('.')[0]
+        self.app_name = get_app_name()
 
     def run(self):
         def get_days_dd():
@@ -1336,7 +1337,7 @@ class UI(QDialog):
             self.radioButton_auto.setEnabled(False)
 
     def load_hiFTPconfig(self):
-        app_name = QtCore.QCoreApplication.arguments()[0].split('\\')[-1].split('.')[0]
+        app_name = get_app_name()
         hiFTPconfig = []
         if os.path.exists(os.path.join(self.cwd_path, f'{app_name}_hiFTPconfig.dat')):
             with open(os.path.join(self.cwd_path, f'{app_name}_hiFTPconfig.dat'), 'rb') as data_file:
@@ -1344,7 +1345,7 @@ class UI(QDialog):
         return hiFTPconfig
 
     def save_hiFTPconfig(self, hiFTPconfig):
-        app_name = QtCore.QCoreApplication.arguments()[0].split('\\')[-1].split('.')[0]
+        app_name = get_app_name()
         with open(os.path.join(self.cwd_path, f'{app_name}_hiFTPconfig.dat'), "wb") as data_file:
             pickle.dump(hiFTPconfig, data_file)
 
@@ -1552,12 +1553,12 @@ class UI(QDialog):
 
     # Feedback button
     def button_wishes_clicked(self):
-        email = '<FONT COLOR=#b96902>videonabexp@gmail.com</FONT>'
+        email = f'<FONT COLOR=#b96902>{CONTACT_EMAIL}</FONT>'
         self.label_wishes_thanks.setText('E-mail: ' + email)
 
     # Button for donations
     def button_thanks_clicked(self):
-        tel = '<FONT COLOR=#b96902>5469 5400 2720 6935</FONT>'
+        tel = f'<FONT COLOR=#b96902>{CONTACT_CARD}</FONT>'
         if self.language == 'eng':
             thanks_text = 'Donations to the BankCard: '
         else:

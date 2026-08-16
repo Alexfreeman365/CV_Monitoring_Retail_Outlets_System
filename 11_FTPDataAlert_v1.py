@@ -6,9 +6,10 @@ import atexit
 import threading
 import queue
 import asyncio
+import ast
 from datetime import datetime
 
-# Импорты для расширенной обработки таймаутов
+# imports for extended timeout handling
 import httpx
 import httpcore
 
@@ -20,12 +21,12 @@ from utils.funcs_TxtUI_request_app_description import *
 atexit.register(cleanup_mei_folders)
 from telegram.error import NetworkError, TimedOut
 
-# Глобальная потокобезопасная очередь для сообщений Telegram
+# global thread-safe queue for Telegram messages
 msg_queue = queue.Queue()
 
 
 # ============================================================
-# 1. АСИНХРОННЫЙ ДВИЖОК ДЛЯ ОБХОДА БЛОКИРОВОК
+# 1. async engine to bypass blocks
 # ============================================================
 async def telegram_worker_loop(bot_token, api_server_url, chat_id, proxy=None):
     from telegram.ext import ApplicationBuilder
@@ -122,13 +123,13 @@ def send_telegram_message(bot, chat_id, message):
 
 
 # ============================================================
-# 2. АУТЕНТИЧНЫЕ ФУНКЦИИ ИЗ СТАРОЙ ВЕРСИИ (С ФИЛЬТРАЦИЕЙ .CACHE)
+# 2. functions from the old version (with .cache filtering)
 # ============================================================
 def get_last_frame(cam_name):
     ftp.cwd(cam_name)
     last_img = None
     try:
-        # Фильтруем .cache и проверяем, что папка камеры не пуста
+        # filter .cache and check the camera folder is not empty
         items = sorted([d for d in ftp.nlst() if d != '.cache'])
         if not items:
             ftp.cwd('..')
@@ -192,7 +193,7 @@ def seconds_to_hhmmss(total_seconds):
 
 
 # ============================================================
-# 3. ОПИСАНИЕ ПРОГРАММЫ
+# 3. program description
 # ============================================================
 DESCRIPTION = (
     'После успешного запуска программы создайте для нее ярлык и перенесите его в папку автозагрузки Windows.\n'
@@ -221,12 +222,12 @@ DESCRIPTION = (
 )
 
 # ============================================================
-# 4. ИНИЦИАЛИЗАЦИЯ
+# 4. initialization
 # ============================================================
 if __name__ == '__main__':
     cwd_path = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(cwd_path)
-    app_name = os.path.basename(sys.executable).split('.')[0]
+    app_name = get_app_name()
 
     cam_work_hours = {d['cam_name']: d['work_hours'] for d in load_camconfig(parent_dir)}
     ftp_host, ftp_user, ftp_pas = get_ftp_host_user_pas(cwd_path)
@@ -253,11 +254,11 @@ if __name__ == '__main__':
     start_telegram_worker(bot_token, final_url, chat_id, proxy=proxy_url)
 
     no_connection = {}
-    total_sended = set()  # Множество исключает взаимный сброс камер
+    total_sended = set()  # set prevents mutual camera reset
     first_launch = True
 
     # ============================================================
-    # 5. ГЛАВНЫЙ СИНХРОННЫЙ ЦИКЛ (АУТЕНТИЧНЫЙ)
+    # 5. main synchronous loop
     # ============================================================
     while True:
         ftp = None
@@ -276,7 +277,7 @@ if __name__ == '__main__':
                 first_launch = False
 
             cur_dt = datetime.today()
-            all_work_hours = (h for i in cam_work_hours.values() for h in eval(i))
+            all_work_hours = (h for i in cam_work_hours.values() for h in ast.literal_eval(i))
             sorted_hours = sorted(all_work_hours)
             min_hour, max_hour = sorted_hours[0], sorted_hours[-1]
             min_work_hour_dt = cur_dt.replace(hour=min_hour, minute=0, second=0)
@@ -285,11 +286,11 @@ if __name__ == '__main__':
             if min_work_hour_dt <= cur_dt <= max_work_hour_dt:
                 for cam_name in sorted(cam_work_hours):
                     if cam_name in cam_names:
-                        start_hour, end_hour = eval(cam_work_hours[cam_name])
+                        start_hour, end_hour = ast.literal_eval(cam_work_hours[cam_name])
                         start_dt = cur_dt.replace(hour=start_hour, minute=1, second=0)
                         end_dt = cur_dt.replace(hour=end_hour, minute=0, second=0)
 
-                        # Мониторинг потери связи
+                        # monitor connection loss
                         if start_dt <= cur_dt <= end_dt:
                             res_frame = get_last_frame(cam_name)
                             last_img_dt = datetime.strptime(res_frame[1:13], '%y%m%d%H%M%S') if res_frame else cur_dt
@@ -314,7 +315,7 @@ if __name__ == '__main__':
                             if cam_name in total_sended:
                                 total_sended.remove(cam_name)
 
-                        # Итоги дня
+                        # end-of-day summary
                         elif (end_dt.replace(hour=end_hour, minute=3, second=0) < cur_dt
                               and cam_name not in total_sended):
                             res_frame = get_last_frame(cam_name)

@@ -3,7 +3,7 @@ import time
 import sys
 import os
 
-# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+# Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.funcs_TxtUI_request_app_description import *
 
@@ -48,7 +48,7 @@ DESCRIPTION = (
 
 if __name__ == '__main__':
     cwd_path = os.getcwd()
-    app_name = os.path.basename(sys.executable).split('.')[0]
+    app_name = get_app_name()
 
     request = f"Введите данные:\n" \
               f"Интервал запуска загрузчиков (мин)->:\nПериод перезапуска загрузчиков (час)->:\n{'-' * 30}"
@@ -77,7 +77,7 @@ if __name__ == '__main__':
 
             try:
                 kill_loaders(process)
-                time.sleep(1)  # Пауза для гарантии освобождения ресурсов
+                time.sleep(1)  # pause to ensure resources are released
                 process = start_loaders(cwd_path, loaders, load_interval)
                 log_event(cwd_path, app_name, 'info',
                           f'Restarted: {len(process)} loaders')

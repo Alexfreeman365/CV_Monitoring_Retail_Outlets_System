@@ -40,6 +40,8 @@ id: 20260816125403
 3. **Сохранить всю протестированную логику работоспособной** — это действующий живой проект, работающий годами.
 4. **Перевести хранение данных с CSV на SQLite** (вся система сейчас работает на CSV-файлах в папке `db/`).
 5. Устранить технический долг (см. раздел 11), не ломая работу системы.
+6. **Унифицировать текстовый интерфейс всех модулей**: первый запуск exe создаёт файл-запрос с описанием и параметрами (программа завершается), повторный запуск читает сохранённые параметры и стартует. Привести к этому все текстовые модули.
+7. **Очистить комментарии в коде**: ~~убрать простые/очевидные, оставить только в сложных местах~~; единый язык комментариев — английский. **Выполнено 2026-08-16 (язык):** все русские комментарии переведены на английский. Удаление очевидных комментариев — опционально, не выполнялось.
 
 ---
 
@@ -92,17 +94,20 @@ CV_Monitoring_Retail_Outlets_System/
 │   └── funcs_TxtUI_request_app_description.py      # текстовый UI, логи, утилиты
 ├── ui/                               # 6 .ui файлов Qt Designer (модули 00,01,04,05,08,10)
 ├── bin/                              # готовые exe + комплекты VA_PC_CV / VA_PC_client (НЕ публиковать)
-├── temp/                             # PyInstaller: build/, spec/ (артефакты сборки)
-├── archive/                          # старые версии, руководство пользователя
+├── temp/                             # PyInstaller: build/, spec/ + образцы данных для анализа (НЕ публиковать)
+├── archive/                          # старые версии, руководство пользователя (НЕ публиковать)
 ├── build_pyinstaller_commands.ps1    # скрипт сборки всех exe
 ├── Dockerfile.script                 # контейнер для 11_FTPDataAlert
-├── requirements.txt                  # зависимости (UTF-16LE)
+├── tests/                            # песочница (реальные доступы, модель, cams_media/db) — НЕ публиковать
+├── requirements.txt                  # зависимости (UTF-8)
 ├── README.md                         # краткое описание системы
 ├── AGENTS.md                         # заметки для агента (среда исполнения)
 └── SPEC.md                           # этот файл
 ```
 
 **Соглашение об именовании модулей:** порядковый номер в начале (`00`–`11`) и версия в конце (`_v1`, `_v2`, ...). Имена переносятся в исполняемые файлы и далее в комплекты установки.
+
+**Scope публикации (зафиксировано):** наружу идут только `ui/`, `utils/` и корневые `.py` (+ README, requirements, SPEC, AGENTS). `bin/`, `temp/`, `tests/`, `archive/`, `dist/`, `.idea/`, `.venv/` — не публикуются (уже в `.gitignore`).
 
 ---
 
@@ -125,18 +130,156 @@ cams_media/
 | `<короткое_имя>_visitors.csv` | Посетители по часам: `date, <часы...>, sum, s` (`s` = auto/real) |
 | `<короткое_имя>_noSeller_time.csv` | Время отсутствия по часам: `date, <часы...>, sum, photos` |
 | `<короткое_имя>_evstat.csv` | Оценка точности: строки real/auto с `err`, `mape` |
+| `visitor_forecast.csv` | Прогноз/оценка посетителей: `date, <камера>_pred, <камера>_real, <камера>_mape` |
 | `<камера>_last_day_processed_imgs.csv` | Маркер прогресса обработки (список обработанных файлов) |
 | `shape_db_info.csv` | Сводка баз силуэтов: `Camera, File_name, First_day, Last_day, Number_of_lines` |
-| `1_real_viscount.xlsx` | Ручной подсчёт посетителей (заполняется вручную в Excel) |
+| `1_real_viscount.xlsx` | Ручной подсчёт посетителей (листы по камерам, заполняется вручную в Excel) |
 | `0_VA_Dashboard.xlsx` | Dashboard — сводная панель (выходная) |
-| `1_Sys_viscount_eval.xlsx` | Панель оценки работы системы (выходная) |
+| `1_Sys_viscount_eval.xlsx` | Панель оценки работы системы (выходная, листы `<камера>_evstat`) |
 
 `db_backups/` — ежедневные копии `db/` (ротация до 180 дней).
+
+**Реальный срез данных лежит в `temp/db/`** (образцы для анализа типов, не публикуются). По нему подтверждено: `shapes_locs` — самая большая таблица (сотни тысяч строк, десятки МБ), хранится **отдельно для каждой камеры** (магазины добавляются/убираются — это требование, сохраняется и в SQLite).
 
 ### Именование камер
 - Одна камера в точке → имя без цифр (`tlt`).
 - Основная + дополнительная → цифры в конце: `chm1` (основная), `chm2` (дополнительная).
 - Для оценки трафика используются данные **только основной камеры** (без цифры, либо с цифрой `1`). Дополнительные камеры уточняют контроль присутствия продавца. `short_name()` отбрасывает конечную цифру для группировки камер одной точки.
+
+### Типы данных для SQLite (проекция, зафиксировано 2026-08-16)
+
+Конвенция: **только INTEGER и TEXT, без REAL/DECIMAL**. Дробные значения — целыми (×100 и т.п.).
+
+| Поле (источник) | Тип SQLite | Примечание |
+|---|---|---|
+| `cam_name`, `origin_file_name`, имена | TEXT | ключи/идентификаторы |
+| `uid8` | TEXT | 22 цифры — не помещается в INTEGER (64-bit) |
+| `shape_location` | 4× INTEGER | `shape_y1, shape_y2, shape_x1, shape_x2` |
+| `shape_zone_coords`, `face_zone_coords`, `frame` | TEXT (JSON) | 1–3 прямоугольника, переменная длина |
+| `shape_zone`, `face_zone` | INTEGER | флаги 0/1 (в CSV `face_zone` пишется как float — артефакт pandas) |
+| счётчики посетителей, часы, `sum`, `err`, `photos`, `Number_of_lines` | INTEGER | |
+| минуты отсутствия продавца | INTEGER | |
+| `work_hours` | 2× INTEGER | `hour_start`, `hour_end` |
+| `vis_count_alg` | 2× INTEGER | `mean_threshold`, `window_next` |
+| даты (`date`, `First_day`, `Last_day`) | TEXT | ISO `YYYY-MM-DD` |
+| `s` (auto/real) | TEXT | |
+| `mape` | INTEGER | сотые доли (×100): «0,07» → 7; сейчас в CSV хранится строкой с запятой |
+
+**Решение (зафиксировано 2026-08-16):** таблицы `visitors` / `noSeller_time` / `evstat` переводятся в **long-формат** `(cam_name, date, hour, value)` — это устраняет динамические колонки (число часов зависит от `work_hours` камеры). Широкое представление для Dashboard собирается на лету в слое доступа (pivot).
+
+### Схема SQLite (проект, зафиксировано 2026-08-16)
+
+Единая база `db/cv.db` (WAL). `shapes_locs` — отдельная таблица на камеру (создаётся динамически при добавлении камеры).
+
+```sql
+PRAGMA journal_mode = WAL;
+
+-- Камеры (бывш. camconfig.csv)
+CREATE TABLE cameras (
+    cam_name        TEXT PRIMARY KEY,
+    shape_zone      TEXT NOT NULL,          -- JSON: 1..3 прямоугольника [[y1,y2,x1,x2],...]
+    face_zone       TEXT NOT NULL,          -- JSON [y1,y2,x1,x2]
+    frame           TEXT NOT NULL,          -- JSON [y1,y2,x1,x2]
+    hour_start      INTEGER NOT NULL,       -- из work_hours
+    hour_end        INTEGER NOT NULL,       -- из work_hours
+    mean_threshold  INTEGER NOT NULL,       -- из vis_count_alg
+    window_next     INTEGER NOT NULL        -- из vis_count_alg
+);
+
+-- Силуэты — отдельная таблица на камеру (шаблон, имя подставляется)
+CREATE TABLE "<cam_name>_shapes_locs" (
+    origin_file_name  TEXT NOT NULL,        -- YYMMDDHHMMSS.jpg
+    uid8              TEXT NOT NULL,        -- 22 цифры
+    day               TEXT NOT NULL,        -- YYMMDD (денормализовано для срезов)
+    shape_y1          INTEGER NOT NULL,
+    shape_y2          INTEGER NOT NULL,
+    shape_x1          INTEGER NOT NULL,
+    shape_x2          INTEGER NOT NULL,
+    shape_zone_coords TEXT,                 -- JSON
+    shape_zone        INTEGER NOT NULL,     -- 0/1
+    face_zone_coords  TEXT,                 -- JSON
+    face_zone         INTEGER NOT NULL      -- 0/1
+);
+CREATE INDEX "idx_<cam_name>_day"  ON "<cam_name>_shapes_locs" (day);
+CREATE INDEX "idx_<cam_name>_uid8" ON "<cam_name>_shapes_locs" (uid8);
+
+-- Дни (сводка по камере и дню: источник данных и кол-во фото)
+CREATE TABLE days (
+    cam_name TEXT NOT NULL,
+    date     TEXT NOT NULL,                 -- ISO YYYY-MM-DD
+    photos   INTEGER NOT NULL DEFAULT 0,    -- кол-во фото за день
+    s        TEXT NOT NULL DEFAULT 'auto',  -- auto|real (источник посетителей)
+    PRIMARY KEY (cam_name, date)
+);
+
+-- Посетители по часам (long)
+CREATE TABLE visitors (
+    cam_name TEXT NOT NULL,   -- короткое имя (short_name)
+    date     TEXT NOT NULL,
+    hour     INTEGER NOT NULL,
+    count    INTEGER NOT NULL,
+    PRIMARY KEY (cam_name, date, hour)
+);
+
+-- Время отсутствия продавца по часам (long)
+CREATE TABLE no_seller_time (
+    cam_name TEXT NOT NULL,
+    date     TEXT NOT NULL,
+    hour     INTEGER NOT NULL,
+    absence_minutes INTEGER NOT NULL,
+    PRIMARY KEY (cam_name, date, hour)
+);
+
+-- Оценка точности: почасовые real/auto
+CREATE TABLE evstat (
+    cam_name   TEXT NOT NULL,
+    date       TEXT NOT NULL,
+    hour       INTEGER NOT NULL,
+    count_real INTEGER NOT NULL,
+    count_auto INTEGER NOT NULL,
+    PRIMARY KEY (cam_name, date, hour)
+);
+
+-- Оценка точности: итоги дня
+CREATE TABLE evstat_day (
+    cam_name TEXT NOT NULL,
+    date     TEXT NOT NULL,
+    sum_real INTEGER NOT NULL,
+    sum_auto INTEGER NOT NULL,
+    err      INTEGER NOT NULL,   -- sum_real - sum_auto
+    mape     INTEGER NOT NULL,   -- сотые доли (×100): 0.07 -> 7
+    PRIMARY KEY (cam_name, date)
+);
+
+-- Сводка баз силуэтов (shape_db_info)
+CREATE TABLE shape_db_info (
+    cam_name        TEXT NOT NULL,
+    file_name       TEXT NOT NULL,
+    first_day       TEXT NOT NULL,  -- ISO
+    last_day        TEXT NOT NULL,  -- ISO
+    number_of_lines INTEGER NOT NULL
+);
+
+-- Прогресс обработки (last_day_processed_imgs)
+CREATE TABLE processed_images (
+    cam_name  TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    PRIMARY KEY (cam_name, file_name)
+);
+
+-- Ручной подсчёт (1_real_viscount.xlsx)
+CREATE TABLE real_viscount (
+    cam_name TEXT NOT NULL,
+    date     TEXT NOT NULL,
+    hour     INTEGER NOT NULL,
+    count    INTEGER NOT NULL,
+    PRIMARY KEY (cam_name, date, hour)
+);
+```
+
+Примечания к схеме:
+- `visitor_forecast` — генерируется отдельным модулем (запускался вручную), будет добавлен в схему в конце.
+- Слой доступа (data access layer) конвертирует текущие DataFrame/CSV-структуры в эту схему и обратно, чтобы алгоритмы (`shape_detection`, `visitors_counting`, `noSeller_time`) не менялись.
 
 ---
 
@@ -233,7 +376,7 @@ cams_media/
 Поиск пропусков в фотографиях: находит временные промежутки (≥ 1 минуты) без кадров в рабочем диапазоне и пишет их в `<app>_respond.txt`. **Использует собственный формат запроса** (`<app>_request.txt` с полями `path:` и `working hours (10-20):`) вместо общего `request_app_description` — см. раздел 11.
 
 ### 07_SysViscountEval_v1 (текстовый UI)
-Оценка точности подсчёта посетителей. Берёт ручные данные из `db/1_real_viscount.xlsx`, сравнивает с расчётом алгоритма (`visitors_counting`) за те же дни, вычисляет ошибку (`err`) и `mape`. Пишет `<короткое_имя>_evstat.csv` (чередующиеся строки real/auto) и обновляет `_visitors.csv` ручными значениями (`s='real'`). Параметры алгоритма задаются в `<app>_current_params.txt` и после оценки записываются в `camconfig.csv`.
+Оценка точности подсчёта посетителей. Берёт ручные данные из `db/1_real_viscount.xlsx`, сравнивает с расчётом алгоритма (`visitors_counting`) за те же дни, вычисляет ошибку (`err`) и `mape`. Пишет `<короткое_имя>_evstat.csv` (чередующиеся строки real/auto) и обновляет `_visitors.csv` ручными значениями (`s='real'`). Параметры алгоритма задаются в `<app>_current_params.txt` (свой формат — см. раздел 11) и после оценки записываются в `camconfig.csv`.
 
 ### 08_CVdbArchivator_v2 (GUI, PyQt5)
 Архивация длинных таблиц силуэтов `shapes_locs.csv`. По дате отсечения (`cutoff_day`) делит таблицу: старые строки переносятся в `db_shapes_archive/<камера>/<первый_день>_<последний_день>/`, в `db/` остаётся «хвост». Потоки `EstimateThread` (предпросмотр границ) и `LetsArchiveThread` (архивация).
@@ -261,6 +404,8 @@ cams_media/
 
 **Паттерн текстового UI:** при первом запуске создаётся файл-запрос `<app>_request_app_description.txt` (шаблон для заполнения) и программа завершается; при втором запуске параметры читаются из файла и программа работает. Журнал — `<app>_event_log.csv`. Такое именование группирует файлы одного модуля в проводнике.
 
+**Форматы конфигов загрузчиков (`.dat`, pickle):** `hiFTPconfig` = `{ftp_host, ftp_user, ftp_pas, cam_name, day_start, day_end, rb_refresh, ftr_from, ftr_from_min, ftr_to, ftr_to_min, rb_str, str_from, str_from_min, str_to, str_to_min, rb_alarm, rb_images, with_deletion, rb_auto}`; `hiSDconfig` = `{ip_num, password, cam_name, day_start, day_end, rb_refresh, ftr_*, str_*, rb_alarm, rb_plan, rb_images, rb_auto, token, chat_id}`. Образцы лежат в `temp/` (не публикуются).
+
 ---
 
 ## 9. Сборка и развёртывание
@@ -276,7 +421,7 @@ cams_media/
 
 ## 10. Зависимости и окружение
 
-`requirements.txt` (в кодировке UTF-16LE): torch/torchvision (cu126), ultralytics, pandas, matplotlib, opencv-python, openpyxl, PyQt5, pyTelegramBotAPI, requests, tqdm, html5lib, pyinstaller. Для `11_FTPDataAlert` дополнительно: python-telegram-bot, httpx, httpcore.
+`requirements.txt` (в кодировке UTF-8): torch/torchvision (cu126), ultralytics, pandas, matplotlib, opencv-python, openpyxl, PyQt5, pyTelegramBotAPI, requests, tqdm, html5lib, pyinstaller. Для `11_FTPDataAlert` дополнительно: python-telegram-bot, httpx, httpcore.
 
 `bin/VA_PC_CV/Настройка_среды.txt` описывает **устаревшее** окружение TensorFlow (EfficientDet). Актуальный движок — PyTorch/Ultralytics YOLOv10 (см. раздел 11, п.1).
 
@@ -287,15 +432,21 @@ cams_media/
 ## 11. Нестыковки и технический долг (зафиксировано 2026-08-16)
 
 1. **Два движка детекции.** Каноническая версия — `CV_SYS_v1.py` (YOLOv10 / PyTorch). `bin/VA_PC_CV/CV_SYS.py` — старая версия v1.2 на TensorFlow/EfficientDet (устаревший артефакт, не публиковать). Путь к `yolov10x.pt` (сейчас `venv/neural_network_models/`) будет определён при проработке архитектуры.
-2. **Хардкод конкретной установки.** В `funcs_vis_count_noseller_time.py` строка `if cam_name == 'tlt'` и срез даты `'231223'` — специфика одной точки. Решение по выносу/удалению — отложено (пометка).
-3. **Личные данные и секреты в коде.** E-mail `videonabexp@gmail.com` и номер карты Сбербанка в кнопках «Пожелания/Благодарность» GUI-модулей; реальный `bot_token` в `test_telegram_bot_API.py`; FTP-креды в `bin/tlt_hiFTPDloader_hiFTPconfig.dat`. Перед публикацией — зачистить (решение отложено, пометка).
-4. **`06_MissingPhotoFinder`** использует собственный формат запроса (`_request.txt`) вместо общего `request_app_description` — упущение, привести к единому варианту.
-5. **Дублирование кода.** `get_coords_from_text`, `detection_zone_intersection`, `dt_slice_shape_df`, `load_camconfig`/`save_camconfig` продублированы в 04/05/07/08 вместо импорта из utils.
-6. **`eval()`** для `work_hours` в `11_FTPDataAlert` — небезопасно, заменить на безопасный парсинг.
-7. **pandas в exe.** Загрузчики и лёгкие модули тянут pandas в сборку (план из `Описание_системы.docx`: избавиться от pandas в exe).
-8. **Хранение на CSV** — вся БД (`db/`) это набор CSV; направление развития — переход на SQLite (цель №4).
-9. **`requirements.txt`** в UTF-16LE и противоречие с `Настройка_среды.txt` (torch vs tensorflow) — привести к единому актуальному виду.
+2. **Хардкод закрытой точки `tlt`.** ~~В `funcs_vis_count_noseller_time.py` строка `if cam_name == 'tlt'` и срез даты `'231223'`.~~ **Решено 2026-08-16:** захардкоженные строки удалены полностью.
+3. **Личные данные в коде.** ~~E-mail и номер карты в кнопках «Пожелания/Благодарность» GUI-модулей (00, 01, 04, 05, 08, 10).~~ **Решено 2026-08-16:** вынесены в `utils/contacts.py` (`CONTACT_EMAIL`, `CONTACT_CARD`); 6 GUI-модулей импортируют константы. Перед публикацией заменить значения в одном файле на плейсхолдеры. `test_telegram_bot_API.py` с реальным токеном **уже удалён** Кэпом.
+4. **`06_MissingPhotoFinder`** ~~использует собственный формат запроса (`_request.txt`)~~ **Решено 2026-08-16:** переведён на общий `request_app_description` (двухэтапный запуск + описание).
+5. **`07_SysViscountEval`** ~~использует собственный формат параметров (`_current_params.txt`)~~ **Решено 2026-08-16:** файл переименован в `_request_app_description.txt`, добавлено описание (`#`-строки); динамический список камер сохранён.
+6. **Дублирование кода.** ~~`get_coords_from_text`, `detection_zone_intersection`, `dt_slice_shape_df`, `load_camconfig`/`save_camconfig` продублированы в 04/05/07/08.~~ **Решено 2026-08-16:** все локальные копии удалены, импорты из `utils.funcs_CV` / `utils.funcs_initializer_camconfig_getcamframe`. Попутно устранено расхождение `dt_slice_shape_df` в 04 (`<= dt_end_full` без `iloc` → каноническое `< dt_end_full` с `iloc[:, 0:-1]`).
+7. **`eval()`** ~~для `work_hours` в `11_FTPDataAlert`~~ **Решено 2026-08-16:** заменён на `ast.literal_eval`.
+8. **pandas в exe.** Загрузчики и лёгкие модули тянут pandas в сборку (план из `Описание_системы.docx`: избавиться от pandas в exe).
+9. **Хранение на CSV** — вся БД (`db/`) это набор CSV; переход на SQLite **в процессе**. **2026-08-16:** слой доступа `utils/db.py`, скрипт `migrate_csv_to_sqlite.py`; все модули переключены на `db.*` (`funcs_initializer`, `funcs_vis_count_noseller_time`, `funcs_CV`, GUI 04/05/07/08). Осталось: ручной подсчёт `1_real_viscount.xlsx` (Excel → таблица `real_viscount`).
 10. **bin/** — бинарники и старые комплекты (не для публикации, уже в `.gitignore`).
+11. **`requirements.txt`** ~~в UTF-16LE~~ **Решено 2026-08-16:** перекодирован в UTF-8. Противоречие с `Настройка_среды.txt` (torch vs tensorflow) — привести к единому актуальному виду.
+12. **`visitor_forecast.csv`** — генерируется отдельным модулем (запускался вручную), будет добавлен в систему в конце. Схема SQLite для него — позже.
+13. **Комментарии в коде** ~~смешаны русский/английский~~ **Решено 2026-08-16:** язык унифицирован — все русские комментарии переведены на английский.
+14. **Определение имени приложения Windows-специфично.** ~~GUI-модули (00, 01) используют `QCoreApplication.arguments()[0].split('\\')[-1]`, текстовые (02, 03, 06, 07, 09, 11) — `os.path.basename(sys.executable)`.~~ **Решено 2026-08-16:** введён `get_app_name()` = `os.path.splitext(os.path.basename(sys.argv[0]))[0]` в `utils/funcs_TxtUI_request_app_description.py`, внедрён во все модули (00–11); работает и под `.py`, и под exe.
+15. **CV_SYS зависит от exe.** ~~`CV_SYS_v1.py` запускает `hiFTPCleaner.exe`/`CVloadAntifreeze.exe` через subprocess из `cams_media/`.~~ **Решено 2026-08-16:** введён `_launch_helper()` с приоритетом `.exe` → `.py` (через `sys.executable`) → пропуск с записью в журнал; `start_hiFTPCleaner_CVloadAntifreeze()` переведён на него. Ядро запускабельно и в песочнице, и в продакшене.
+16. **Выбор языка интерфейса в загрузчиках.** В 00/01 (загрузчики) остался выбор русский/английский интерфейс; сейчас используется только русский. Убрать выбор, оставить один (русский) — выполнить на шаге рефакторинга загрузчиков.
 
 ---
 
@@ -312,3 +463,17 @@ cd /root/workspace/CV_Monitoring_Retail_Outlets_System && .venv-linux/bin/python
 
 ### 12.3. Журнал изменений
 - 2026-08-16 — Составлена полная спецификация системы (изучены все модули, utils, сборка, руководство пользователя и `Описание_системы.docx`). Зафиксированы цели и технический долг.
+- 2026-08-16 — Проанализирован реальный срез базы в `temp/db/`; зафиксированы типы данных для SQLite, требование «shapes_locs отдельно на камеру», scope публикации (только ui/, utils/, корневые .py), цель №6 (унифицированный текстовый интерфейс).
+- 2026-08-16 — Спроектирована SQLite-схема (раздел 5). Приняты решения: `tlt` удалить полностью; `visitor_forecast` добавим в конце; комментарии очистить (цель №7).
+- 2026-08-16 — Развёрнута песочница `tests/` (реальные FTP/камера-доступы, модель yolov10x.pt, файловая структура через симлинки). Создаётся `.venv-linux` (torch cu126 + ultralytics) под GPU RTX 3060. Выявлены сквозные проблемы: app_name (Windows-разделитель), зависимость CV_SYS от exe.
+- 2026-08-16 — Сквозной рефакторинг: `get_app_name()` внедрён во все модули (убраны `split('\\')`/`sys.executable`). Проверено: алгоритмы посетителей/отсутствия под pandas 3.0.5 дают результаты, совпадающие с боевой базой (chm1 за 2024-08-31: 8 посетителей, 119 мин отсутствия).
+- 2026-08-16 — Рефакторинг CV_SYS: зависимость от exe вынесена в `_launch_helper()` (exe → py → skip). Проверено компиляцией и негативным/позитивным запуском спутников.
+- 2026-08-16 — Устранено дублирование кода в 04/07/08 (вынесено в utils). Проверено: py_compile, отсутствие локальных def, импорт и работа функций.
+- 2026-08-16 — Удалён хардкод `tlt`; `eval()` в 11 заменён на `ast.literal_eval`. Проверено (visitors_counting sum=8 после удаления).
+- 2026-08-16 — Унифицирован текстовый интерфейс: 06 переведён на `request_app_description`, 07 — единое имя файла + описание. Проверено (двухэтапный запуск, roundtrip параметров).
+- 2026-08-16 — Личные данные (e-mail, карта) вынесены в `utils/contacts.py`; 6 GUI-модулей переведены на импорт констант. Проверено (py_compile, отсутствие хардкода в GUI).
+- 2026-08-16 — Зачистка кода: `requirements.txt` перекодирован в UTF-8; все русские комментарии переведены на английский. Проверено (py_compile 19 файлов, отсутствие кириллических комментариев).
+- 2026-08-16 — Создан слой доступа `utils/db.py` (SQLite). Проверено round-trip на фикстуре: camconfig (5 камер), shapes (3000 строк), visitors (392 дня), noSeller (392), evstat (50) — точное совпадение.
+- 2026-08-16 — Скрипт миграции `migrate_csv_to_sqlite.py`. Проверен на полной фикстуре (chm1 268k + chm2 20k shapes, visitors/noSeller 392 дня, evstat 50) — 3.8с, точное совпадение; CSV остаётся холодным резервом.
+- 2026-08-16 — Ядро алгоритмов переключено на `db.*` (`funcs_initializer` → обёртки над db; `funcs_vis_count_noseller_time` → `db.read_*/write_*`; явный `import pandas` в funcs_CV/05). Проверено на SQLite: find_new_shapes (471 shapes), visitors=8, noSeller=119 — совпадает с боевой базой.
+- 2026-08-16 — Переключены на `db.*` модули `funcs_CV` (shape_db_info через SQL COUNT/MIN/MAX, shapes) и GUI 04/05/07/08 (shapes/visitors/evstat). Проверено: py_compile 9 файлов, round-trip visitors/evstat, build_shape_db_info (chm1=268656, chm2=20362). Архивный экспорт 08 остаётся CSV (экспортная папка).

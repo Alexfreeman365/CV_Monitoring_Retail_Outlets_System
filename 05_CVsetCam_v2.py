@@ -5,12 +5,15 @@ from PyQt5.QtGui import (QPainter, QPen, QBrush, QColor, QPixmap)
 from PyQt5 import uic
 import sys
 import os
+import pandas as pd
 
-# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+# Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.funcs_TxtUI_request_app_description import get_path, cleanup_mei_folders
+from utils.contacts import CONTACT_EMAIL, CONTACT_CARD
 
 from utils.funcs_initializer_camconfig_getcamframe import *
+import utils.db as db
 from utils.funcs_CV import detection_zone_intersection, get_coords_from_text
 from utils.funcs_vis_count_noseller_time import short_name, update_visitors
 
@@ -101,7 +104,7 @@ class ShowZoneWindow(QWidget):
             images = os.listdir(os.path.join(imgs_path, first_range_day))
             first_range_img = [img for img in images if img[:len(date_start)] == date_start][0]
             img_path = os.path.join(imgs_path, first_range_day, first_range_img)
-            df_cam = pd.read_csv(os.path.join(self.cwd_path, 'db', f'{self.cam_name}_shapes_locs.csv'))
+            df_cam = db.read_shapes(self.cam_name, self.cwd_path)
             df_cam_slice = dt_slice_shape_df(df_cam, date_start, date_end)
             if self.direction == 'shape_zone':
                 self.coords = df_cam_slice.iloc[0]['shape_zone_coords']
@@ -144,7 +147,7 @@ class ShowZoneWindow(QWidget):
     def setCoordsToEditLines(self):
         if self.direction == 'shape_zone':
             if len(self.coords) == 4:
-                # Конвертируем numpy типы в обычные int
+                # convert numpy types to plain int
                 coords_tuple = tuple(int(c) for c in self.coords)
                 self.main_window.le_shape_zone_1.setText(str(coords_tuple))
             if len(self.coords) == 3:
@@ -292,7 +295,7 @@ class SaveRecalculateThread(QThread):
         def change_df_cam_shape_zone(cam_name, shape_zone_coords):
             date_start = self.main_window.le_date_start.text()
             date_end = self.main_window.le_date_end.text()
-            df_cam = pd.read_csv(os.path.join(self.cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
+            df_cam = db.read_shapes(cam_name, self.cwd_path)
             df = df_cam.copy()
             dt_end_full = str(int(date_end) + 1)
             df['dt'] = df['uid8'].apply(lambda x: str(x)[:10])
@@ -300,12 +303,12 @@ class SaveRecalculateThread(QThread):
                 lambda x: detection_zone_intersection(get_coords_from_text(x), shape_zone_coords))
             df.loc[(df['dt'] >= date_start) & (df['dt'] < dt_end_full), 'shape_zone_coords'] = shape_zone_coords
             df = df.iloc[:, 0:-1]
-            df.to_csv(os.path.join(self.cwd_path, 'db', f'{cam_name}_shapes_locs.csv'), index=False)
+            db.write_shapes(cam_name, df, self.cwd_path, mode='replace')
 
         def change_df_cam_face_zone(cam_name, face_zone_coords):
             date_start = self.main_window.le_date_start.text()
             date_end = self.main_window.le_date_end.text()
-            df_cam = pd.read_csv(os.path.join(self.cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
+            df_cam = db.read_shapes(cam_name, self.cwd_path)
             df = df_cam.copy()
             dt_end_full = str(int(date_end) + 1)
             df['dt'] = df['uid8'].apply(lambda x: str(x)[:10])
@@ -313,7 +316,7 @@ class SaveRecalculateThread(QThread):
                 lambda x: detection_zone_intersection(get_coords_from_text(x), face_zone_coords))
             df.loc[(df['dt'] >= date_start) & (df['dt'] < dt_end_full), 'face_zone_coords'] = face_zone_coords
             df = df.iloc[:, 0:-1]
-            df.to_csv(os.path.join(self.cwd_path, 'db', f'{cam_name}_shapes_locs.csv'), index=False)
+            db.write_shapes(cam_name, df, self.cwd_path, mode='replace')
 
         def set_shape_coords(date_start, date_end):
             coords_list = []
@@ -617,12 +620,12 @@ class UI(QDialog):
             self.label_out.setText(self.text_data_error)
 
     def button_wishes_clicked(self):
-        email = '<FONT COLOR=#b96902>videonabexp@gmail.com</FONT>'
+        email = f'<FONT COLOR=#b96902>{CONTACT_EMAIL}</FONT>'
         self.label_wishes_thanks.setText('E-mail: ' + email)
         self.label_out.setText('')
 
     def button_thanks_clicked(self):
-        tel = '<FONT COLOR=#b96902>5469 5400 2720 6935</FONT>'
+        tel = f'<FONT COLOR=#b96902>{CONTACT_CARD}</FONT>'
         self.label_wishes_thanks.setText('Благодарность на карту Сбербанк: ' + tel + ' Алексей')
         self.label_out.setText('')
 

@@ -1,12 +1,14 @@
+import pandas as pd
 import numpy as np
 import sys
 import os
 import shutil
 from datetime import datetime, timedelta
 
-# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+# Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.funcs_initializer_camconfig_getcamframe import *
+import utils.db as db
 
 
 def backup_db(cwd_path):
@@ -55,22 +57,22 @@ def find_new_shapes(cam_name, last_cam_visitors_day, camconfig, cwd_path=os.getc
     print(str_next_cam_visitors_day)
 
     if not cam_name[-1].isdigit():
-        cam_shapes = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
+        cam_shapes = db.read_shapes(cam_name, cwd_path)
         cam_shapes = cam_shapes.drop_duplicates(keep='first')
         cam_shapes = cam_shapes.sort_values('origin_file_name')
         cam_shapes = cam_shapes.reset_index(drop=True)
-        cam_shapes.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'), index=False)
+        db.write_shapes(cam_name, cam_shapes, cwd_path, mode='replace')
         cam_shapes['cam_name'] = cam_name
         new_shapes = dt_slice_shape_df(cam_shapes, str_next_cam_visitors_day, str_next_cam_visitors_day)
     else:
         group = [cam_set['cam_name'] for cam_set in camconfig if cam_set['cam_name'][:-1] == cam_name[:-1]]
         new_shapes = pd.DataFrame()
         for cam_name in group:
-            cam_shapes = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
+            cam_shapes = db.read_shapes(cam_name, cwd_path)
             cam_shapes = cam_shapes.drop_duplicates(keep='first')
             cam_shapes = cam_shapes.sort_values('origin_file_name')
             cam_shapes = cam_shapes.reset_index(drop=True)
-            cam_shapes.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'), index=False)
+            db.write_shapes(cam_name, cam_shapes, cwd_path, mode='replace')
             cam_shapes['cam_name'] = cam_name
             cam_new_shapes = dt_slice_shape_df(cam_shapes, str_next_cam_visitors_day, str_next_cam_visitors_day)
             new_shapes = pd.concat([new_shapes, cam_new_shapes])
@@ -248,28 +250,28 @@ def noSeller_time(cam_name, new_shapes, date, absence_threshold=10, cwd_path=os.
                     full_no_seller_time.iloc[0, i + 1] = 60
             full_no_seller_time = full_no_seller_time.iloc[:, :-1]
 
-            # ОБРАБОТКА УТРЕННЕГО ОПОЗДАНИЯ,
-            # Определяем время открытия магазина
+            # handle morning lateness
+            # determine the store opening time
             opening_time = datetime.strptime(date + str(hour_start).zfill(2), '%y%m%d%H')
 
-            # Находим первое появление продавца
+            # find the first appearance of the seller
             first_appearance = df_ones['dt'].min()
 
-            # Вычисляем количество реальных обнаружений (не auto_insert)
+            # count real detections (excluding auto_insert)
             real_detections = len(df_ones[df_ones['origin_file_name'] != 'auto_insert'])
 
-            # Вычисляем опоздание в минутах
+            # compute lateness in minutes
             if first_appearance > opening_time:
                 late_minutes = (first_appearance - opening_time).total_seconds() / 60
 
-                # Учитываем опоздание ТОЛЬКО если:
-                # 1. Оно в пределах первого часа
-                # 2. В течение дня было достаточно реальных обнаружений (более 5)
+                # count lateness ONLY if:
+                # 1. within the first hour
+                # 2. enough real detections during the day (more than 5)
                 first_hour_end = opening_time + timedelta(hours=1)
 
-                # Если обнаружений мало (< 5), то игнорируем все срабатывания и считаем день пустым
+                # if too few detections (< 5), ignore all and treat the day as empty
                 if real_detections < 5:
-                    # Не добавляем утреннее опоздание вообще
+                    # do not add morning lateness at all
                     pass
                 elif late_minutes > absence_threshold and first_appearance <= first_hour_end:
                     opening_hour = str(hour_start)
@@ -328,11 +330,11 @@ def vis_count_noseller_pipeline(cam_name, ip_cam_data_path, cwd_path=os.getcwd()
     mean_threshold = int(cam_set['vis_count_alg'].split(',')[0][1:])
     window_next = int(cam_set['vis_count_alg'].split(',')[1][1:-1])
 
-    if os.path.exists(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv')):
-        cam_visitors = pd.read_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv'))
+    cam_visitors = db.read_visitors(short_name(cam_name), cwd_path)
+    if not cam_visitors.empty:
         last_cam_visitors_day = ''.join(cam_visitors['date'].iloc[-1][2:].split('-'))
     else:
-        cam_shapes = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
+        cam_shapes = db.read_shapes(cam_name, cwd_path)
         last_cam_visitors_day = cam_shapes.iloc[0]['origin_file_name'][:6]
         last_cam_visitors_day = datetime.strptime(last_cam_visitors_day, '%y%m%d') - timedelta(days=1)
         last_cam_visitors_day = datetime.strftime(last_cam_visitors_day, '%y%m%d')
@@ -350,25 +352,12 @@ def vis_count_noseller_pipeline(cam_name, ip_cam_data_path, cwd_path=os.getcwd()
                                              window_next=window_next,
                                              cwd_path=cwd_path)
 
-        if cam_name == 'tlt' and len(new_shapes) != 0:
-            new_shapes = dt_slice_shape_df(new_shapes, '231223',
-                                           new_shapes.iloc[-1]['origin_file_name'][:6]).copy()
-
         noSeller_time_cam = noSeller_time(cam_name, new_shapes, date, absence_threshold=10, cwd_path=cwd_path)
         noSeller_time_cam = add_photos_to_noSeller(noSeller_time_cam, ip_cam_data_path)
 
-        if os.path.exists(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv')):
-            visitors_pvt_cam.to_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv'),
-                                    mode='a', header=False, index=False)
-        else:
-            visitors_pvt_cam.to_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv'), index=False)
+        db.write_visitors(short_name(cam_name), visitors_pvt_cam, cwd_path, mode='append')
 
-        if os.path.exists(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_noSeller_time.csv')):
-            noSeller_time_cam.to_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_noSeller_time.csv'),
-                                     mode='a', header=False, index=False)
-        else:
-            noSeller_time_cam.to_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_noSeller_time.csv'),
-                                     index=False)
+        db.write_no_seller(short_name(cam_name), noSeller_time_cam, cwd_path, mode='append')
 
 
 def update_visitors(cam_name, date_start, date_end, cwd_path):
@@ -382,7 +371,7 @@ def update_visitors(cam_name, date_start, date_end, cwd_path):
         cur_params = tuple(map(int, cam_set['vis_count_alg'].strip('()').split(', ')))
         mean_threshold, window_next = cur_params
 
-        cam_shapes = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
+        cam_shapes = db.read_shapes(cam_name, cwd_path)
         slice_cam_shapes = dt_slice_shape_df(cam_shapes, day_start, day_end)
 
         new_cam_visitors = pd.DataFrame()
@@ -394,7 +383,7 @@ def update_visitors(cam_name, date_start, date_end, cwd_path):
                                              mean_threshold, window_next, cwd_path=cwd_path)
             new_cam_visitors = pd.concat([new_cam_visitors, day_visitors])
 
-        cam_visitors = pd.read_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv'))
+        cam_visitors = db.read_visitors(short_name(cam_name), cwd_path)
         cam_visitors = cam_visitors.sort_values('date')
         cam_visitors = cam_visitors.reset_index(drop=True)
 
@@ -403,18 +392,17 @@ def update_visitors(cam_name, date_start, date_end, cwd_path):
             new_cam_visitors.set_index('date', inplace=True)
             auto_cam_visitors = cam_visitors[cam_visitors['s'] != 'real'].copy()
 
-            # Находим индексы, которые есть в new_cam_visitors, но отсутствуют в auto_cam_visitors
+            # find indices present in new_cam_visitors but missing in auto_cam_visitors
             missing_indices = new_cam_visitors.index.difference(auto_cam_visitors.index)
             if not missing_indices.empty:
-                # Добавляем отсутствующие строки в auto_cam_visitors
+                # append missing rows to auto_cam_visitors
                 missing_rows = new_cam_visitors.loc[missing_indices]
                 auto_cam_visitors = pd.concat([auto_cam_visitors, missing_rows])
 
             auto_cam_visitors.update(new_cam_visitors)
             cam_visitors.update(auto_cam_visitors)
             cam_visitors.reset_index(inplace=True)
-            cam_visitors.to_csv(
-                os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv'), index=False)
+            db.write_visitors(short_name(cam_name), cam_visitors, cwd_path, mode='replace')
         else:
             hour_start = int(cam_set['work_hours'].strip('()').split(', ')[0])
             hour_end = int(cam_set['work_hours'].strip('()').split(', ')[1])
@@ -440,5 +428,4 @@ def update_visitors(cam_name, date_start, date_end, cwd_path):
             auto_cam_visitors.update(zero_visitors)
             cam_visitors.update(auto_cam_visitors)
             cam_visitors.reset_index(inplace=True)
-            cam_visitors.to_csv(
-                os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv'), index=False)
+            db.write_visitors(short_name(cam_name), cam_visitors, cwd_path, mode='replace')

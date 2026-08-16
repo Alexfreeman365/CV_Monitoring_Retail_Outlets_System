@@ -14,9 +14,10 @@ from datetime import datetime, timedelta
 import pickle
 import telebot
 
-# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+# Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.funcs_TxtUI_request_app_description import get_path, log_event, cleanup_mei_folders
+from utils.funcs_TxtUI_request_app_description import get_path, log_event, cleanup_mei_folders, get_app_name
+from utils.contacts import CONTACT_EMAIL, CONTACT_CARD
 
 import atexit
 atexit.register(cleanup_mei_folders)
@@ -328,7 +329,7 @@ class ParseThread(QThread):
         if self.TOKEN:
             self.bot = telebot.TeleBot(self.TOKEN, parse_mode=None)
         self.max_retries = 100  # Maximum number of reconnection attempts
-        self.app_name = QtCore.QCoreApplication.arguments()[0].split('\\')[-1].split('.')[0]
+        self.app_name = get_app_name()
 
     def run(self):
         # The following 5 functions are similar
@@ -746,7 +747,7 @@ class GetDays(QThread):
         self.host_sd = self.main_window.host_sd
         self.host = self.main_window.host
         self.days = []
-        self.app_name = QtCore.QCoreApplication.arguments()[0].split('\\')[-1].split('.')[0]
+        self.app_name = get_app_name()
         self.lineEdit_cam_name = self.main_window.lineEdit_cam_name
         self.lineEdit_token = self.main_window.lineEdit_token
         self.lineEdit_chat_id = self.main_window.lineEdit_chat_id
@@ -1040,7 +1041,7 @@ class UI(QDialog):
             self.radioButton_auto.setEnabled(False)
 
     def load_hiSDconfig(self):
-        app_name = QtCore.QCoreApplication.arguments()[0].split('\\')[-1].split('.')[0]
+        app_name = get_app_name()
         hiSDconfig = []
         if os.path.exists(os.path.join(self.cwd_path, f'{app_name}_hiSDconfig.dat')):
             with open(os.path.join(self.cwd_path, f'{app_name}_hiSDconfig.dat'), 'rb') as data_file:
@@ -1048,7 +1049,7 @@ class UI(QDialog):
         return hiSDconfig
 
     def save_hiSDconfig(self, hiSDconfig):
-        app_name = QtCore.QCoreApplication.arguments()[0].split('\\')[-1].split('.')[0]
+        app_name = get_app_name()
         with open(os.path.join(self.cwd_path, f'{app_name}_hiSDconfig.dat'), "wb") as data_file:
             pickle.dump(hiSDconfig, data_file)
 
@@ -1198,12 +1199,12 @@ class UI(QDialog):
 
     # Feedback button
     def button_wishes_clicked(self):
-        email = '<FONT COLOR=#b96902>videonabexp@gmail.com</FONT>'
+        email = f'<FONT COLOR=#b96902>{CONTACT_EMAIL}</FONT>'
         self.label_wishes_thanks.setText('E-mail: ' + email)
 
     # Button for donations
     def button_thanks_clicked(self):
-        tel = '<FONT COLOR=#b96902>5469 5400 2720 6935</FONT>'
+        tel = f'<FONT COLOR=#b96902>{CONTACT_CARD}</FONT>'
         self.label_wishes_thanks.setText('Благодарность на карту Сбербанк: ' + tel + ' Алексей')
 
     def start(self):

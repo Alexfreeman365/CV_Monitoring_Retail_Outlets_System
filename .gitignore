@@ -2,6 +2,7 @@
 .git/
 .idea/
 .venv/
+.venv-linux/
 archive/
 bin/
 dist/

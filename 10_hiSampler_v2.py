@@ -6,9 +6,10 @@ import shutil
 import os
 import sys
 
-# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+# Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.funcs_TxtUI_request_app_description import get_path, cleanup_mei_folders
+from utils.contacts import CONTACT_EMAIL, CONTACT_CARD
 
 import atexit
 atexit.register(cleanup_mei_folders)
@@ -251,12 +252,12 @@ class UI(QDialog):
 
     # Feedback button
     def button_wishes_clicked(self):
-        email = '<FONT COLOR=#b96902>videonabexp@gmail.com</FONT>'
+        email = f'<FONT COLOR=#b96902>{CONTACT_EMAIL}</FONT>'
         self.label_wishes_thanks.setText('E-mail: ' + email)
 
     # Button for donations
     def button_thanks_clicked(self):
-        tel = '<FONT COLOR=#b96902>5469 5400 2720 6935</FONT>'
+        tel = f'<FONT COLOR=#b96902>{CONTACT_CARD}</FONT>'
         thanks_text = 'Благодарность на карту Сбербанк: '
         self.label_wishes_thanks.setText(thanks_text + tel + ' Алексей')
 

@@ -4,29 +4,28 @@ import os
 import sys
 from datetime import datetime
 
-# Добавляем корень проекта в пути поиска, чтобы Python видел папку utils
+# Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.funcs_vis_count_noseller_time import short_name, visitors_counting
-from utils.funcs_TxtUI_request_app_description import cleanup_mei_folders
-
+from utils.funcs_initializer_camconfig_getcamframe import load_camconfig, save_camconfig, dt_slice_shape_df
+import utils.db as db
+from utils.funcs_TxtUI_request_app_description import cleanup_mei_folders, get_app_name
 import atexit
 atexit.register(cleanup_mei_folders)
 
-def load_camconfig():
-    camconfig = []
-    if os.path.exists(os.path.join(cwd_path, 'db', 'camconfig.csv')):
-        camconfig = pd.read_csv(os.path.join(cwd_path, 'db', 'camconfig.csv'))
-        camconfig = camconfig.to_dict(orient='records')
-    return camconfig
+
+DESCRIPTION = (
+    'Программа оценки точности подсчета посетителей.\n'
+    'Сравнивает ручные данные из db/1_real_viscount.xlsx с расчетом алгоритма\n'
+    'и обновляет таблицы оценки. Параметры алгоритма (mean_threshold, window_next)\n'
+    'задаются ниже для каждой камеры в формате: имя_камеры: (mean, window).\n'
+)
 
 
-def save_camconfig(camconfig):
-    camconfig = pd.DataFrame(camconfig)
-    camconfig.to_csv(os.path.join(cwd_path, 'db', 'camconfig.csv'), index=False)
-
-
-def create_txt_params(text_path, camconfig):
+def create_txt_params(text_path, camconfig, description):
     with open(text_path, 'w', encoding='utf-8') as f:
+        for line in description.strip().split('\n'):
+            print(f'# {line}', file=f)
         for cam in camconfig:
             if not cam['cam_name'][-1].isdigit() or cam['cam_name'][-1] == '1':
                 print(f"{cam['cam_name']}: {cam['vis_count_alg']}", file=f)
@@ -42,19 +41,14 @@ def read_txt_params(text_note_path):
     if os.path.exists(text_note_path):
         with open(text_note_path, 'r') as f:
             lines = f.readlines()
-    lines = list(map(str.strip, lines))
     params = {}
     for l in lines:
+        l = l.strip()
+        if not l or l.startswith('#'):
+            continue
         cam_name, dirty_params = l.split(':')
         params[cam_name] = tuple(map(int, dirty_params.strip(' ()').split(', ')))
     return params
-
-
-def dt_slice_shape_df(df_cam, dt_start, dt_end):
-    df = df_cam.copy()
-    dt_end_full = str(int(dt_end) + 1)
-    df['dt'] = df['uid8'].apply(lambda x: str(x)[:10])
-    return df[(df['dt'] >= dt_start) & (df['dt'] < dt_end_full)].iloc[:, 0:-1]
 
 
 def find_new_shapes(cam_name, last_cam_visitors_day):
@@ -62,10 +56,10 @@ def find_new_shapes(cam_name, last_cam_visitors_day):
     str_next_cam_visitors_day = datetime.strftime(next_cam_visitors_day, '%y%m%d')
     print(str_next_cam_visitors_day)
 
-    cam_shapes = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
+    cam_shapes = db.read_shapes(cam_name, cwd_path)
     cam_shapes = cam_shapes.sort_values('origin_file_name')
     cam_shapes = cam_shapes.reset_index(drop=True)
-    cam_shapes.to_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'), index=False)
+    db.write_shapes(cam_name, cam_shapes, cwd_path, mode='replace')
     cam_shapes['cam_name'] = cam_name
 
     new_shapes = dt_slice_shape_df(cam_shapes, str_next_cam_visitors_day, str_next_cam_visitors_day)
@@ -91,9 +85,8 @@ def evaluation(cam_name, params, camconfig, cwd_path):
         cur_params = tuple(map(int, cur_params.strip('()').split(', ')))
 
     if params[cam_name] == cur_params:
-        cur_eval_statistic = pd.read_csv(os.path.join
-                                         (cwd_path, 'db', f'{short_name(cam_name)}_evstat.csv'),
-                                         parse_dates=['date'])
+        cur_eval_statistic = db.read_evstat(short_name(cam_name), cwd_path)
+        cur_eval_statistic['date'] = pd.to_datetime(cur_eval_statistic['date'])
         cur_eval_days_dt = np.unique(cur_eval_statistic['date'].dt.date)
         cur_eval_days = list(map(dt_to_str, cur_eval_days_dt))
         exist_eval_days = sorted(list(set(cur_eval_days) & set(all_real_days)))
@@ -102,7 +95,7 @@ def evaluation(cam_name, params, camconfig, cwd_path):
         mean_threshold, window_next = cur_params
         auto_visitors = pd.DataFrame()
         for day in new_real_days:
-            cam_shapes = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
+            cam_shapes = db.read_shapes(cam_name, cwd_path)
             new_shapes = dt_slice_shape_df(cam_shapes, day, day)
             new_shapes['cam_name'] = cam_name
             day_visitors = visitors_counting(cam_name, new_shapes, day, mean_threshold, window_next, cwd_path=cwd_path)
@@ -143,19 +136,19 @@ def evaluation(cam_name, params, camconfig, cwd_path):
             eval_statistic = pd.concat([exist_evalstat, new_eval])
             eval_statistic.sort_values('date', inplace=True)
             eval_statistic.reset_index(drop=True, inplace=True)
-            eval_statistic.to_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_evstat.csv'), index=False)
+            db.write_evstat(short_name(cam_name), eval_statistic, cwd_path, mode='replace')
 
         elif set(cur_eval_days) != set(all_real_days):
             eval_statistic = cur_eval_statistic[cur_eval_statistic['date'].isin(all_real_days_dt)].copy()
             eval_statistic.sort_values('date', inplace=True)
             eval_statistic.reset_index(drop=True, inplace=True)
-            eval_statistic.to_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_evstat.csv'), index=False)
+            db.write_evstat(short_name(cam_name), eval_statistic, cwd_path, mode='replace')
 
     else:
         mean_threshold, window_next = params[cam_name]
         auto_visitors = pd.DataFrame()
         for day in all_real_days:
-            cam_shapes = pd.read_csv(os.path.join(cwd_path, 'db', f'{cam_name}_shapes_locs.csv'))
+            cam_shapes = db.read_shapes(cam_name, cwd_path)
             new_shapes = dt_slice_shape_df(cam_shapes, day, day)
             new_shapes['cam_name'] = cam_name
             day_visitors = visitors_counting(cam_name, new_shapes, day, mean_threshold, window_next, cwd_path=cwd_path)
@@ -187,30 +180,30 @@ def evaluation(cam_name, params, camconfig, cwd_path):
             eval_statistic['mape'] = eval_statistic['mape'].apply(lambda x: str(x).replace('.', ','))
             eval_statistic['mape'] = eval_statistic['mape'].replace('nan', '0,0')
             eval_statistic['mape'] = eval_statistic['mape'].fillna('0,0')
-            eval_statistic.to_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_evstat.csv'), index=False)
+            db.write_evstat(short_name(cam_name), eval_statistic, cwd_path, mode='replace')
 
     # Updating visitors data using manual data
-    if os.path.exists(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv')):
-        cam_visitors = pd.read_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv'))
+    cam_visitors = db.read_visitors(short_name(cam_name), cwd_path)
+    if not cam_visitors.empty:
         all_real_visitors['s'] = 'real'
         all_real_visitors = all_real_visitors[cam_visitors.columns]
         all_real_visitors.set_index('date', inplace=True)
         cam_visitors.set_index('date', inplace=True)
         cam_visitors.update(all_real_visitors)
         cam_visitors.reset_index(inplace=True)
-        cam_visitors.to_csv(os.path.join(cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv'), index=False)
+        db.write_visitors(short_name(cam_name), cam_visitors, cwd_path, mode='replace')
 
 
 if __name__ == '__main__':
     cwd_path = os.getcwd()
-    app_name = os.path.basename(sys.executable).split('.')[0]
-    text_params_path = os.path.join(cwd_path, f'{app_name}_current_params.txt')
+    app_name = get_app_name()
+    text_params_path = os.path.join(cwd_path, f'{app_name}_request_app_description.txt')
     text_program_status_path = os.path.join(cwd_path, f'{app_name}_program_status.txt')
 
     camconfig = load_camconfig()
 
     if not os.path.exists(text_params_path):
-        create_txt_params(text_params_path, camconfig)
+        create_txt_params(text_params_path, camconfig, DESCRIPTION)
     else:
         txt_params = read_txt_params(text_params_path)
 
