@@ -11,6 +11,7 @@ import time
 from datetime import datetime, timedelta
 import pickle
 import ftplib
+import traceback
 
 # Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -742,6 +743,7 @@ class ParseThread(QThread):
                         continue
                     return False
                 except Exception:
+                    log_event(os.getcwd(), self.app_name, self.cam_name, traceback.format_exc())
                     return False
 
         # The main execution cycle
