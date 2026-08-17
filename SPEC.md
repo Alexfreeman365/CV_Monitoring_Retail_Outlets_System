@@ -98,7 +98,6 @@ CV_Monitoring_Retail_Outlets_System/
 ├── archive/                          # старые версии, руководство пользователя (НЕ публиковать)
 ├── build_pyinstaller_commands.ps1    # скрипт сборки всех exe
 ├── Dockerfile.script                 # контейнер для 11_FTPDataAlert
-├── tests/                            # песочница (реальные доступы, модель, cams_media/db) — НЕ публиковать
 ├── requirements.txt                  # зависимости (UTF-8)
 ├── README.md                         # краткое описание системы
 ├── AGENTS.md                         # заметки для агента (среда исполнения)
@@ -107,7 +106,7 @@ CV_Monitoring_Retail_Outlets_System/
 
 **Соглашение об именовании модулей:** порядковый номер в начале (`00`–`11`) и версия в конце (`_v1`, `_v2`, ...). Имена переносятся в исполняемые файлы и далее в комплекты установки.
 
-**Scope публикации (зафиксировано):** наружу идут только `ui/`, `utils/` и корневые `.py` (+ README, requirements, SPEC, AGENTS). `bin/`, `temp/`, `tests/`, `archive/`, `dist/`, `.idea/`, `.venv/` — не публикуются (уже в `.gitignore`).
+**Scope публикации (зафиксировано):** наружу идут только `ui/`, `utils/` и корневые `.py` (+ README, requirements, SPEC, AGENTS). `bin/`, `temp/`, `archive/`, `dist/`, `.idea/`, `.venv/` — не публикуются (уже в `.gitignore`).
 
 ---
 
@@ -282,6 +281,7 @@ CREATE TABLE real_viscount (
 Примечания к схеме:
 - `visitor_forecast` — генерируется отдельным модулем (запускался вручную), будет добавлен в схему в конце.
 - Слой доступа (data access layer) конвертирует текущие DataFrame/CSV-структуры в эту схему и обратно, чтобы алгоритмы (`shape_detection`, `visitors_counting`, `noSeller_time`) не менялись.
+- **Экспорт для дашборда (временный механизм):** `db.export_dashboard_csv()` (CLI `export_visitors_csv.py`) зеркалит `visitors`/`no_seller_time` в legacy CSV рядом с базой: `{short_name}_visitors.csv` (колонки `date,<часы>,sum,s`) и `{short_name}_noSeller_time.csv` (`date,<часы>,sum,photos`). Вызывается автоматически в конце `vis_count_noseller_pipeline`; CSV подключаются к Excel-дашборду стейкхолдеров вместо старых CSV.
 
 ---
 
@@ -452,7 +452,7 @@ CREATE TABLE real_viscount (
 12. **`visitor_forecast.csv`** — генерируется отдельным модулем (запускался вручную), будет добавлен в систему в конце. Схема SQLite для него — позже.
 13. **Комментарии в коде** ~~смешаны русский/английский~~ **Решено 2026-08-16:** язык унифицирован — все русские комментарии переведены на английский.
 14. **Определение имени приложения Windows-специфично.** ~~GUI-модули (00, 01) используют `QCoreApplication.arguments()[0].split('\\')[-1]`, текстовые (02, 03, 06, 07, 09, 11) — `os.path.basename(sys.executable)`.~~ **Решено 2026-08-16:** введён `get_app_name()` = `os.path.splitext(os.path.basename(sys.argv[0]))[0]` в `utils/funcs_TxtUI_request_app_description.py`, внедрён во все модули (00–11); работает и под `.py`, и под exe.
-15. **CV_SYS зависит от exe.** ~~`CV_SYS_v1.py` запускает `hiFTPCleaner.exe`/`CVloadAntifreeze.exe` через subprocess из `cams_media/`.~~ **Решено 2026-08-16:** введён `_launch_helper()` с приоритетом `.exe` → `.py` (через `sys.executable`) → пропуск с записью в журнал; `start_hiFTPCleaner_CVloadAntifreeze()` переведён на него. Ядро запускабельно и в песочнице, и в продакшене.
+15. **CV_SYS зависит от exe.** ~~`CV_SYS_v1.py` запускает `hiFTPCleaner.exe`/`CVloadAntifreeze.exe` через subprocess из `cams_media/`.~~ **Решено 2026-08-16:** введён `_launch_helper()` с приоритетом `.exe` → `.py` (через `sys.executable`) → пропуск с записью в журнал; `start_hiFTPCleaner_CVloadAntifreeze()` переведён на него. Ядро запускабельно и в тестовой среде, и в продакшене.
 16. **Выбор языка интерфейса в загрузчиках.** ~~В 00/01 остался выбор русский/английский интерфейс.~~ **Решено 2026-08-16:** механизм выбора удалён — остался единственный русский. В `01` убраны все `if self.language == 'eng'` (19 блоков) и `self.language`; суффикс фото-папки зафиксирован `_photos`. Логика `file_type in ['_images', '_photos']` оставлена (обратная совместимость со старыми папками).
 
 ---
@@ -470,18 +470,18 @@ cd /root/workspace/CV_Monitoring_Retail_Outlets_System && .venv-linux/bin/python
 
 ### 12.3. Доступ к камерам и тестирование загрузчиков
 
-- **Реальная камера (lobby, Camhi SD):** `192.168.0.13`, URL `http://admin:<пароль>@192.168.0.13/sd/` (креды в `tests/lobby_hiSDloader_v4_hiSDconfig.dat`, pickle). FTP-камеры — креды в `tests/chm1_hiFTPDloader_hiFTPconfig.dat`, `tests/chm2_hiFTPDloader_hiFTPconfig.dat`.
-- **Обход прокси (обязательно):** в WSL-песочнице стоит Privoxy и блокирует локальную сеть. Любой запрос к камере/локальной сети идёт с `proxies={'http': None, 'https': None}` (или `NO_PROXY`). Без этого камера отвечает `403 Request blocked (Privoxy@...)`.
+- **Реальная камера (lobby, Camhi SD):** `192.168.0.13`, URL `http://admin:<пароль>@192.168.0.13/sd/` (креды в `lobby_hiSDloader_v4_hiSDconfig.dat`, pickle). FTP-камеры — креды в `chm1_hiFTPDloader_hiFTPconfig.dat`, `chm2_hiFTPDloader_hiFTPconfig.dat`.
+- **Обход прокси (обязательно):** в WSL-среде стоит Privoxy и блокирует локальную сеть. Любой запрос к камере/локальной сети идёт с `proxies={'http': None, 'https': None}` (или `NO_PROXY`). Без этого камера отвечает `403 Request blocked (Privoxy@...)`.
 - **Проверка доступности:** `.venv-linux/bin/python` → `requests.get('http://admin:...@192.168.0.13/sd/', proxies={'http': None, 'https': None})` → `200`, 54 дня на SD (даты `YYYYMMDD`, ссылки `?nd/?dd/?sd`, `/sd/..`, `/sd/<день>/`).
 - **Головное тестирование загрузчика (без GUI):** 00/01 — GUI (PyQt5), в WSL без display не запускаются. Логику тестировать напрямую: `get_days()` → `get_day_folders()` → `get_video_links()` → `download_series()` (скачать 1 файл в temp). Структура дня: папки `imagesNNN/`, `recordNNN/`; имя фото `A<день><время>.jpg`; парсинг ссылок — `link['href'].split('/')[4]`.
-- **cwd_path:** в 00 после импортов есть редактируемая `cwd_path = os.getcwd()` (для теста — `os.path.join(os.getcwd(), 'tests', 'cams_media')`).
+- **cwd_path:** в 00 после импортов есть редактируемая `cwd_path = os.getcwd()`.
 - **Логи загрузчиков:** `{app_name}_event_log.csv` в `cwd_path`; с 2026-08-16 пишет полный traceback при любом падении (не только в `attempt_download`).
 
 ### 12.4. Журнал изменений
 - 2026-08-16 — Составлена полная спецификация системы (изучены все модули, utils, сборка, руководство пользователя и `Описание_системы.docx`). Зафиксированы цели и технический долг.
 - 2026-08-16 — Проанализирован реальный срез базы в `temp/db/`; зафиксированы типы данных для SQLite, требование «shapes_locs отдельно на камеру», scope публикации (только ui/, utils/, корневые .py), цель №6 (унифицированный текстовый интерфейс).
 - 2026-08-16 — Спроектирована SQLite-схема (раздел 5). Приняты решения: `tlt` удалить полностью; `visitor_forecast` добавим в конце; комментарии очистить (цель №7).
-- 2026-08-16 — Развёрнута песочница `tests/` (реальные FTP/камера-доступы, модель yolov10x.pt, файловая структура через симлинки). Создаётся `.venv-linux` (torch cu126 + ultralytics) под GPU RTX 3060. Выявлены сквозные проблемы: app_name (Windows-разделитель), зависимость CV_SYS от exe.
+- 2026-08-16 — Создана `.venv-linux` (torch cu126 + ultralytics) под GPU RTX 3060. Выявлены сквозные проблемы: app_name (Windows-разделитель), зависимость CV_SYS от exe.
 - 2026-08-16 — Сквозной рефакторинг: `get_app_name()` внедрён во все модули (убраны `split('\\')`/`sys.executable`). Проверено: алгоритмы посетителей/отсутствия под pandas 3.0.5 дают результаты, совпадающие с боевой базой (chm1 за 2024-08-31: 8 посетителей, 119 мин отсутствия).
 - 2026-08-16 — Рефакторинг CV_SYS: зависимость от exe вынесена в `_launch_helper()` (exe → py → skip). Проверено компиляцией и негативным/позитивным запуском спутников.
 - 2026-08-16 — Устранено дублирование кода в 04/07/08 (вынесено в utils). Проверено: py_compile, отсутствие локальных def, импорт и работа функций.
@@ -498,3 +498,7 @@ cd /root/workspace/CV_Monitoring_Retail_Outlets_System && .venv-linux/bin/python
 - 2026-08-16 — П.8: pandas в `db.py` ленивый; лёгкие модули (02/03/06/09/11/01) без pandas. requirements.txt дополнен (beautifulsoup4, httpx, httpcore). Проверено: import лёгких модулей без pandas; тяжёлый DataFrame-путь работает.
 - 2026-08-16 — `11_FTPDataAlert_v1.py`: убран запуск из-под прокси (`HTTPXRequest`/`host.docker.internal:2080`), оставлен обычный запуск (планируется запуск под глобальным VPN).
 - 2026-08-16 — Решение Кэпа: `shapes_locs` переведён с отдельных таблиц `<cam>_shapes_locs` на **единую таблицу `shapes_locs` с полем `cam_name`**. Переписаны `db.write_shapes`/`read_shapes`/`build_shape_db_info`/`shapes_exist`/`shapes_count`. Проверено: миграция фикстуры (2 камеры, 289 018 строк в одной таблице), round-trip read_shapes (chm1 268 656 строк, uid8-выравнен), shapes_count, build_shape_db_info.
+- 2026-08-17 — `write_shapes` принимает `shape_location` и как `list` (из детекции), и как `str` (из CSV) через `_shape_location_tuple`; пустой DataFrame больше не валит слой (эквивалент `to_csv`). `04`/`05` переведены с проверок CSV-файлов на `db.shapes_exist`/`db.visitors_exist`.
+- 2026-08-17 — Первый запуск: если базы `db/cv.db` не было — после `initializer` система останавливается (`sys.exit(0)`) для настройки камер. Исправлены вызовы без `cwd_path`: в `KeyboardInterrupt` (`load_camconfig`, `vis_count_noseller_pipeline`, `save_shape_db_info`) и в `vis_count_noseller_pipeline` (`load_last_day_processed_imgs`), а также `save_shape_db_info` в `shape_detection`. Устранены падения `KeyError: shape_location` и `no such table: processed_images`.
+- 2026-08-17 — Экспорт для дашборда: `db.export_dashboard_csv()` + CLI `export_visitors_csv.py` (legacy CSV `{short_name}_visitors.csv` / `{short_name}_noSeller_time.csv`, полная перезапись). Проверено: заголовки совпадают с `temp/db`.
+- 2026-08-17 — Удалена песочница `tests/`; реальные данные перенесены в корень проекта (рабочая база `db/cv.db`). Зафиксировано ограничение: штатная работа — один новый день за запуск.

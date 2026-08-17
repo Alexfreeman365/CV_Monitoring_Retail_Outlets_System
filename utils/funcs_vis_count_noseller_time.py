@@ -359,6 +359,8 @@ def vis_count_noseller_pipeline(cam_name, ip_cam_data_path, cwd_path=os.getcwd()
 
         db.write_no_seller(short_name(cam_name), noSeller_time_cam, cwd_path, mode='append')
 
+        db.export_dashboard_csv(cwd_path)
+
 
 def update_visitors(cam_name, date_start, date_end, cwd_path):
     if not cam_name[-1].isdigit() or cam_name[-1] == '1':

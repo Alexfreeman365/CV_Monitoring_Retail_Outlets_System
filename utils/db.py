@@ -300,6 +300,25 @@ def write_no_seller(cam_name, df, cwd_path=os.getcwd(), mode='append'):
     conn.close()
 
 
+# --- dashboard CSV export (temporary) ---
+
+def _short_name(name):
+    return name[:-1] if name[-1].isdigit() else name
+
+
+def export_dashboard_csv(cwd_path=os.getcwd()):
+    """Mirror visitors/no_seller to legacy CSV (dashboard link) in db/."""
+    camconfig = load_camconfig(cwd_path)
+    short_names = sorted({_short_name(c['cam_name']) for c in camconfig})
+    for sn in short_names:
+        vis = read_visitors(sn, cwd_path)
+        if not vis.empty:
+            vis.to_csv(os.path.join(cwd_path, 'db', f'{sn}_visitors.csv'), index=False)
+        ns = read_no_seller(sn, cwd_path)
+        if not ns.empty:
+            ns.to_csv(os.path.join(cwd_path, 'db', f'{sn}_noSeller_time.csv'), index=False)
+
+
 # --- evstat (wide <-> long) ---
 
 def _parse_mape(value):
