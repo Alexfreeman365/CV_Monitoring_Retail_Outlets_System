@@ -59,12 +59,13 @@ def log_event(cwd_path, app_name, name, message):
     log_file_path = os.path.join(cwd_path, log_file_name)
 
     try:
+        write_header = not os.path.exists(log_file_path)
         with open(log_file_path, mode='a', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
-            if not os.path.exists(log_file_path):
+            if write_header:
                 writer.writerow(['timestamp', 'name', 'message'])
-            writer.writerow([current_time, name, message])
-    except IOError as e:
+            writer.writerow([current_time, str(name), str(message)])
+    except IOError:
         pass
 
 
