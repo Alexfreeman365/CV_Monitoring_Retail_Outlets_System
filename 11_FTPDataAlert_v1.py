@@ -28,20 +28,12 @@ msg_queue = queue.Queue()
 # ============================================================
 # 1. async engine to bypass blocks
 # ============================================================
-async def telegram_worker_loop(bot_token, api_server_url, chat_id, proxy=None):
+async def telegram_worker_loop(bot_token, api_server_url, chat_id):
     from telegram.ext import ApplicationBuilder
-    from telegram.request import HTTPXRequest
 
-    print(f"[DEBUG] Инициализация сетевого транспорта бота с прокси: {proxy}...")
-
-    request_init = None
-    if proxy:
-        request_init = HTTPXRequest(proxy=proxy, connect_timeout=5.0, read_timeout=5.0)
+    print("[DEBUG] Инициализация сетевого транспорта бота...")
 
     builder = ApplicationBuilder().token(bot_token).base_url(api_server_url)
-    if request_init:
-        builder = builder.request(request_init)
-
     application = builder.build()
     print("[DEBUG] Сборка Application завершена успешно.")
 
@@ -103,13 +95,13 @@ async def telegram_worker_loop(bot_token, api_server_url, chat_id, proxy=None):
     await application.shutdown()
 
 
-def start_telegram_worker(bot_token, base_url, chat_id, proxy=None):
+def start_telegram_worker(bot_token, base_url, chat_id):
     """Запускает изолированный фоновый поток для асинхронного Application."""
 
     def run():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(telegram_worker_loop(bot_token, base_url, chat_id, proxy))
+        loop.run_until_complete(telegram_worker_loop(bot_token, base_url, chat_id))
 
     worker_thread = threading.Thread(target=run, daemon=True)
     worker_thread.start()
@@ -249,9 +241,8 @@ if __name__ == '__main__':
     chat_id = int(chat_id)
 
     final_url = "https://api.telegram.org/bot"
-    proxy_url = "http://host.docker.internal:2080"
 
-    start_telegram_worker(bot_token, final_url, chat_id, proxy=proxy_url)
+    start_telegram_worker(bot_token, final_url, chat_id)
 
     no_connection = {}
     total_sended = set()  # set prevents mutual camera reset
