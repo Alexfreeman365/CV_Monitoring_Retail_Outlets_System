@@ -1,4 +1,4 @@
-pyinstaller --onefile -w `
+python -m PyInstaller --onefile -w `
 --exclude-module matplotlib `
 --exclude-module numpy `
 --exclude-module pandas `
@@ -31,7 +31,7 @@ pyinstaller --onefile -w `
 --clean --runtime-tmpdir=hi_temp `
 "$pwd/00_hiSDloader_v4.py"
 
-pyinstaller --onefile -w `
+python -m PyInstaller --onefile -w `
 --exclude-module matplotlib `
 --exclude-module numpy `
 --exclude-module pandas `
