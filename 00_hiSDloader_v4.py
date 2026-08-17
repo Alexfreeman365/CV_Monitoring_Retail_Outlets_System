@@ -13,6 +13,7 @@ import time
 from datetime import datetime, timedelta
 import pickle
 import telebot
+import traceback
 
 # Add project root to sys.path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,6 +22,10 @@ from utils.contacts import CONTACT_EMAIL, CONTACT_CARD
 
 import atexit
 atexit.register(cleanup_mei_folders)
+
+# Working directory (edit if needed):
+# cwd_path = os.path.join(os.getcwd(), 'tests', 'cams_media')
+cwd_path = os.getcwd()
 
 
 # First worker thread for collecting summary information about files in a selected time range
@@ -137,17 +142,17 @@ class EstimateThread(QThread):
             if self.main_window.radioButton_images.isChecked():
                 image_path = os.path.join(self.output_dir, ip + '_photos')
                 if os.path.exists(image_path):
-                    image_last_pc_day = os.listdir(image_path)[-1]
+                    image_last_pc_day = (os.listdir(image_path) or ['0'])[-1]
 
             if self.main_window.radioButton_plan.isChecked():
                 video_path = os.path.join(self.output_dir, ip + '_videos')
                 if os.path.exists(video_path):
-                    video_last_pc_day = os.listdir(video_path)[-1]
+                    video_last_pc_day = (os.listdir(video_path) or ['0'])[-1]
 
             if self.main_window.radioButton_alarm.isChecked():
                 video_path = os.path.join(self.output_dir, ip + '_videos')
                 if os.path.exists(video_path):
-                    video_last_pc_day = os.listdir(video_path)[-1]
+                    video_last_pc_day = (os.listdir(video_path) or ['0'])[-1]
 
             if image_last_pc_day <= self.days[0]:
                 image_last_pc_day = self.days[0]
@@ -286,6 +291,7 @@ class EstimateThread(QThread):
             self.enable_disable_ui.emit(True)
         except:
             self.enable_disable_ui.emit(True)
+            log_event(cwd_path, get_app_name(), self.lineEdit_cam_name.text(), traceback.format_exc())
             text_error = '<FONT COLOR=#f4320c>Проблемы с оценкой. ' \
                          'Попробуйте проверить ваш промежуток времени.</FONT>'
             self.message.emit(text_error)
@@ -394,17 +400,17 @@ class ParseThread(QThread):
             if self.main_window.radioButton_images.isChecked():
                 image_path = os.path.join(self.output_dir, ip + '_photos')
                 if os.path.exists(image_path):
-                    image_last_pc_day = os.listdir(image_path)[-1]
+                    image_last_pc_day = (os.listdir(image_path) or ['0'])[-1]
 
             if self.main_window.radioButton_plan.isChecked():
                 video_path = os.path.join(self.output_dir, ip + '_videos')
                 if os.path.exists(video_path):
-                    video_last_pc_day = os.listdir(video_path)[-1]
+                    video_last_pc_day = (os.listdir(video_path) or ['0'])[-1]
 
             if self.main_window.radioButton_alarm.isChecked():
                 video_path = os.path.join(self.output_dir, ip + '_videos')
                 if os.path.exists(video_path):
-                    video_last_pc_day = os.listdir(video_path)[-1]
+                    video_last_pc_day = (os.listdir(video_path) or ['0'])[-1]
 
             if image_last_pc_day <= self.days[0]:
                 image_last_pc_day = self.days[0]
@@ -606,7 +612,7 @@ class ParseThread(QThread):
                     download_series(links_dict_)
                     return True
                 except Exception as e:
-                    log_event(os.getcwd(), self.app_name, self.lineEdit_cam_name,
+                    log_event(cwd_path, self.app_name, self.lineEdit_cam_name.text(),
                               f'Error: {e}. Reconnect attempt: {attempt}')
                     if attempt < self.max_retries - 1:
                         time.sleep(5)  # Pause before trying again
@@ -653,6 +659,7 @@ class ParseThread(QThread):
             self.enable_disable_ui.emit(True)
         except:
             self.enable_disable_ui.emit(True)
+            log_event(cwd_path, self.app_name, self.lineEdit_cam_name.text(), traceback.format_exc())
             text_error = '<FONT COLOR=#f4320c>Проблемы со скачиванием. ' \
                          'Попробуйте проверить ваш промежуток времени.</FONT>'
             self.message.emit(text_error)
@@ -778,7 +785,7 @@ class GetDays(QThread):
             self.days_message.emit(self.days)
             self.enable_disable_ui.emit(True)
         except Exception as e:
-            log_event(os.getcwd(), self.app_name, self.lineEdit_cam_name, e)
+            log_event(cwd_path, self.app_name, self.lineEdit_cam_name.text(), traceback.format_exc())
             self.start_enable_ui.emit(True)
             text_error = '<FONT COLOR=#f4320c>Ошибка</FONT>'
             self.status_message.emit(text_error)
@@ -860,7 +867,7 @@ class UI(QDialog):
         self.str_to = ''
         self.alarm_only = True
         # Setting the output directory to the current program folder
-        self.cwd_path = os.getcwd()
+        self.cwd_path = cwd_path
         self.output_dir = self.cwd_path + '/'
         self.days = []
 
