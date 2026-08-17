@@ -10,7 +10,7 @@ from utils.funcs_vis_count_noseller_time import *
 from utils.funcs_TxtUI_request_app_description import *
 import utils.db as db
 
-MODEL_REL_PATH = os.path.join('venv', 'neural_network_models', 'yolov10x.pt')
+MODEL_REL_PATH = os.path.join('.venv', 'neural_network_models', 'yolov10x.pt')
 
 
 def _launch_helper(cwd_path, loc_path, name_substr):
@@ -64,7 +64,7 @@ def terminate_hiFTPCleaner_CVloadAntifreeze(process):
 
 
 if __name__ == '__main__':
-    cwd_path = r'D:\pjs\CV_Monitoring_Retail_Outlets_System\tests' #os.getcwd()
+    cwd_path = os.getcwd()
     app_name = 'CV_SYS'
 
     request = f"Введите данные:\n" \
