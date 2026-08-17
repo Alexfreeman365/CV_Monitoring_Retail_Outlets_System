@@ -8,9 +8,15 @@ bin/
 dist/
 temp/
 tests/
+cams_media/
+db/
+db_backups/
+imgs_cvdb/
 
 *.dat
 *.ipynb
+*.txt
+*.csv
 
 # Системные файлы (Windows, macOS)
 desktop.ini
