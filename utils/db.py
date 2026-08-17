@@ -168,6 +168,10 @@ def write_shapes(cam_name, df, cwd_path=os.getcwd(), mode='append'):
     conn = _connect(cwd_path)
     if mode == 'replace':
         conn.execute('DELETE FROM shapes_locs WHERE cam_name = ?', (cam_name,))
+    if df.empty:
+        conn.commit()
+        conn.close()
+        return
 
     locs = df['shape_location'].apply(_shape_location_tuple)
     sc = df['shape_zone_coords'].where(df['shape_zone_coords'].notna(), None)

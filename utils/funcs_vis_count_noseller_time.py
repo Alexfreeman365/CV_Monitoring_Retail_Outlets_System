@@ -340,7 +340,7 @@ def vis_count_noseller_pipeline(cam_name, ip_cam_data_path, cwd_path=os.getcwd()
         last_cam_visitors_day = datetime.strftime(last_cam_visitors_day, '%y%m%d')
 
     new_shapes, date = find_new_shapes(cam_name, last_cam_visitors_day, camconfig, cwd_path)
-    last_day_processed_imgs = load_last_day_processed_imgs(cam_name)
+    last_day_processed_imgs = load_last_day_processed_imgs(cam_name, cwd_path)
     if len(last_day_processed_imgs) != 0:
         last_seen_day = last_day_processed_imgs[0][:6]
     else:

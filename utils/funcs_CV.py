@@ -256,7 +256,7 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_n
                 (not cam_name[-1].isdigit() or cam_name[-1] == '1') and
                 db.shapes_exist(cam_name, cwd_path)):
             vis_count_noseller_pipeline(cam_name, images_path, cwd_path)
-            save_shape_db_info(cam_names)
+            save_shape_db_info(cam_names, cwd_path)
 
         # countdown = 0  # countdown visualisation during tests
         for image_name in tqdm(cam_imgs_dict[day], desc=f'{cam_name}: '):  # tqdm

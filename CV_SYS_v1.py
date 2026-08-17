@@ -74,7 +74,12 @@ if __name__ == '__main__':
     chat_id = int(chat_id)
     bot = telebot.TeleBot(bot_token)
 
+    first_run = not os.path.exists(db.db_path(cwd_path))
     ip_cam_data_paths_dict, cam_names = initializer(cwd_path)
+    if first_run:
+        log_event(cwd_path, app_name, 'sys', 'First run: camera config initialized. Configure cameras (work_hours, zones) and restart.')
+        print('First run: camera config initialized. Configure cameras (work_hours, zones), then restart.')
+        sys.exit(0)
     # process = start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=False) #1
     # time.sleep(60 * 30) #2
 
@@ -103,13 +108,13 @@ if __name__ == '__main__':
 
     except KeyboardInterrupt:
         for cam_name in sorted(cam_names):
-            camconfig = load_camconfig()
+            camconfig = load_camconfig(cwd_path)
             cam_set = [cam_set for cam_set in camconfig if cam_set['cam_name'] == cam_name][0]
             hour_end = cam_set['work_hours'].split(',')[1][1:-1]
             if (datetime.now()).strftime('%H') >= hour_end: # '0'
                 if not cam_name[-1].isdigit() or cam_name[-1] == '1':
-                    vis_count_noseller_pipeline(cam_name, ip_cam_data_paths_dict[cam_name])
-        save_shape_db_info(cam_names)
+                    vis_count_noseller_pipeline(cam_name, ip_cam_data_paths_dict[cam_name], cwd_path)
+        save_shape_db_info(cam_names, cwd_path)
         backup_db(cwd_path)
 
         log_event(cwd_path, app_name, 'sys', 'Stopping the system')
