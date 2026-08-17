@@ -85,10 +85,8 @@ CREATE TABLE IF NOT EXISTS real_viscount (
     count    INTEGER NOT NULL,
     PRIMARY KEY (cam_name, date, hour)
 );
-'''
-
-_SHAPES_TEMPLATE = '''
-CREATE TABLE IF NOT EXISTS "{cam}_shapes_locs" (
+CREATE TABLE IF NOT EXISTS shapes_locs (
+    cam_name          TEXT NOT NULL,
     origin_file_name  TEXT NOT NULL,
     uid8              TEXT NOT NULL,
     day               TEXT NOT NULL,
@@ -99,12 +97,12 @@ CREATE TABLE IF NOT EXISTS "{cam}_shapes_locs" (
     shape_zone_coords TEXT,
     shape_zone        INTEGER NOT NULL,
     face_zone_coords  TEXT,
-    face_zone         INTEGER NOT NULL
+    face_zone         INTEGER NOT NULL,
+    PRIMARY KEY (cam_name, origin_file_name, uid8)
 );
-CREATE INDEX IF NOT EXISTS "idx_{cam}_day"  ON "{cam}_shapes_locs" (day);
-CREATE INDEX IF NOT EXISTS "idx_{cam}_uid8" ON "{cam}_shapes_locs" (uid8);
+CREATE INDEX IF NOT EXISTS idx_shapes_cam_day  ON shapes_locs (cam_name, day);
+CREATE INDEX IF NOT EXISTS idx_shapes_cam_uid8 ON shapes_locs (cam_name, uid8);
 '''
-
 
 def init_db(cwd_path=os.getcwd()):
     conn = _connect(cwd_path)
@@ -152,28 +150,40 @@ def save_camconfig(camconfig, cwd_path=os.getcwd()):
     conn.close()
 
 
-# --- shapes (one table per camera) ---
+# --- shapes (unified table) ---
+
+def _shape_location_tuple(v):
+    """Normalize shape_location: str '[y1, y2, x1, x2]' or list [y1,y2,x1,x2] -> (y1,y2,x1,x2)."""
+    if isinstance(v, str):
+        parts = [int(float(x)) for x in v.strip('[]').replace(' ', '').split(',')]
+    elif isinstance(v, (list, tuple)):
+        parts = [int(float(x)) for x in v]
+    else:
+        parts = [0, 0, 0, 0]
+    return tuple(parts)
+
 
 def write_shapes(cam_name, df, cwd_path=os.getcwd(), mode='append'):
     init_db(cwd_path)
     conn = _connect(cwd_path)
     if mode == 'replace':
-        conn.execute(f'DROP TABLE IF EXISTS "{cam_name}_shapes_locs"')
-    conn.executescript(_SHAPES_TEMPLATE.format(cam=cam_name))
+        conn.execute('DELETE FROM shapes_locs WHERE cam_name = ?', (cam_name,))
 
-    loc = df['shape_location'].str.strip('[]').str.split(r',\s*', expand=True).astype(int)
+    locs = df['shape_location'].apply(_shape_location_tuple)
     sc = df['shape_zone_coords'].where(df['shape_zone_coords'].notna(), None)
     fc = df['face_zone_coords'].where(df['face_zone_coords'].notna(), None)
     rows = list(zip(
+        [cam_name] * len(df),
         df['origin_file_name'].astype(str),
         df['uid8'].astype(str),
         df['uid8'].astype(str).str[:6],
-        loc[0], loc[1], loc[2], loc[3],
+        locs.map(lambda t: t[0]), locs.map(lambda t: t[1]),
+        locs.map(lambda t: t[2]), locs.map(lambda t: t[3]),
         sc, df['shape_zone'].fillna(0).astype(int),
         fc, df['face_zone'].fillna(0).astype(int),
     ))
     conn.executemany(
-        f'INSERT OR REPLACE INTO "{cam_name}_shapes_locs" VALUES (?,?,?,?,?,?,?,?,?,?,?)', rows)
+        'INSERT OR REPLACE INTO shapes_locs VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', rows)
     conn.commit()
     conn.close()
 
@@ -183,9 +193,9 @@ def read_shapes(cam_name, cwd_path=os.getcwd()):
     import pandas as pd
     conn = _connect(cwd_path)
     df = pd.read_sql_query(
-        f'SELECT origin_file_name, uid8, shape_y1, shape_y2, shape_x1, shape_x2, '
-        f'shape_zone_coords, shape_zone, face_zone_coords, face_zone '
-        f'FROM "{cam_name}_shapes_locs"', conn)
+        'SELECT origin_file_name, uid8, shape_y1, shape_y2, shape_x1, shape_x2, '
+        'shape_zone_coords, shape_zone, face_zone_coords, face_zone '
+        'FROM shapes_locs WHERE cam_name = ? ORDER BY origin_file_name', conn, params=(cam_name,))
     conn.close()
     if df.empty:
         return df
@@ -415,7 +425,8 @@ def build_shape_db_info(cam_names, cwd_path=os.getcwd()):
     for cam_name in cam_names:
         try:
             first, last, n = conn.execute(
-                f'SELECT MIN(day), MAX(day), COUNT(*) FROM "{cam_name}_shapes_locs"').fetchone()
+                'SELECT MIN(day), MAX(day), COUNT(*) FROM shapes_locs WHERE cam_name = ?',
+                (cam_name,)).fetchone()
         except sqlite3.OperationalError:
             continue
         if n is None or n == 0:
@@ -431,7 +442,7 @@ def build_shape_db_info(cam_names, cwd_path=os.getcwd()):
 def shapes_exist(cam_name, cwd_path=os.getcwd()):
     conn = _connect(cwd_path)
     try:
-        n = conn.execute(f'SELECT COUNT(*) FROM "{cam_name}_shapes_locs"').fetchone()[0]
+        n = conn.execute('SELECT COUNT(*) FROM shapes_locs WHERE cam_name = ?', (cam_name,)).fetchone()[0]
     except sqlite3.OperationalError:
         n = 0
     conn.close()
@@ -441,11 +452,18 @@ def shapes_exist(cam_name, cwd_path=os.getcwd()):
 def shapes_count(cam_name, cwd_path=os.getcwd()):
     conn = _connect(cwd_path)
     try:
-        n = conn.execute(f'SELECT COUNT(*) FROM "{cam_name}_shapes_locs"').fetchone()[0]
+        n = conn.execute('SELECT COUNT(*) FROM shapes_locs WHERE cam_name = ?', (cam_name,)).fetchone()[0]
     except sqlite3.OperationalError:
         n = 0
     conn.close()
     return n
+
+
+def visitors_exist(cam_name, cwd_path=os.getcwd()):
+    conn = _connect(cwd_path)
+    n = conn.execute('SELECT COUNT(*) FROM visitors WHERE cam_name = ?', (cam_name,)).fetchone()[0]
+    conn.close()
+    return n > 0
 
 
 def read_real_viscount(cam_name, cwd_path=os.getcwd()):

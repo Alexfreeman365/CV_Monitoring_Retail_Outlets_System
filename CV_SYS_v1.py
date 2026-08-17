@@ -64,7 +64,7 @@ def terminate_hiFTPCleaner_CVloadAntifreeze(process):
 
 
 if __name__ == '__main__':
-    cwd_path = os.getcwd()
+    cwd_path = r'D:\pjs\CV_Monitoring_Retail_Outlets_System\tests' #os.getcwd()
     app_name = 'CV_SYS'
 
     request = f"Введите данные:\n" \
@@ -75,8 +75,8 @@ if __name__ == '__main__':
     bot = telebot.TeleBot(bot_token)
 
     ip_cam_data_paths_dict, cam_names = initializer(cwd_path)
-    process = start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=False) #1
-    time.sleep(60 * 30) #2
+    # process = start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=False) #1
+    # time.sleep(60 * 30) #2
 
     try:
         model_path = os.path.join(cwd_path, MODEL_REL_PATH)
@@ -97,8 +97,8 @@ if __name__ == '__main__':
                     time.sleep(5)
         except Exception as error:
             log_event(cwd_path, app_name, 'error', type(error).__name__)
-            terminate_hiFTPCleaner_CVloadAntifreeze(process) #3
-            bot.send_message(chat_id, 'CV_SYS >>> Ошибка в основном pipeline')
+            # terminate_hiFTPCleaner_CVloadAntifreeze(process) #3
+            # bot.send_message(chat_id, 'CV_SYS >>> Ошибка в основном pipeline')
             raise error
 
     except KeyboardInterrupt:
@@ -113,6 +113,6 @@ if __name__ == '__main__':
         backup_db(cwd_path)
 
         log_event(cwd_path, app_name, 'sys', 'Stopping the system')
-        terminate_hiFTPCleaner_CVloadAntifreeze(process) #4
+        # terminate_hiFTPCleaner_CVloadAntifreeze(process) #4
         cleanup_mei_folders(os.path.join(cwd_path, 'cams_media'))
 

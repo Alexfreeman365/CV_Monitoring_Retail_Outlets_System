@@ -139,7 +139,7 @@ cams_media/
 
 `db_backups/` — ежедневные копии `db/` (ротация до 180 дней).
 
-**Реальный срез данных лежит в `temp/db/`** (образцы для анализа типов, не публикуются). По нему подтверждено: `shapes_locs` — самая большая таблица (сотни тысяч строк, десятки МБ), хранится **отдельно для каждой камеры** (магазины добавляются/убираются — это требование, сохраняется и в SQLite).
+**Реальный срез данных лежит в `temp/db/`** (образцы для анализа типов, не публикуются). По нему подтверждено: `shapes_locs` — самая большая таблица (сотни тысяч строк, десятки МБ). Хранится **единой таблицей `shapes_locs` с полем `cam_name`** (все камеры в одной таблице, срез по камере — через `WHERE cam_name`).
 
 ### Именование камер
 - Одна камера в точке → имя без цифр (`tlt`).
@@ -169,7 +169,7 @@ cams_media/
 
 ### Схема SQLite (проект, зафиксировано 2026-08-16)
 
-Единая база `db/cv.db` (WAL). `shapes_locs` — отдельная таблица на камеру (создаётся динамически при добавлении камеры).
+Единая база `db/cv.db` (WAL). `shapes_locs` — единая таблица для всех камер (поле `cam_name`).
 
 ```sql
 PRAGMA journal_mode = WAL;
@@ -186,8 +186,9 @@ CREATE TABLE cameras (
     window_next     INTEGER NOT NULL        -- из vis_count_alg
 );
 
--- Силуэты — отдельная таблица на камеру (шаблон, имя подставляется)
-CREATE TABLE "<cam_name>_shapes_locs" (
+-- Силуэты — единая таблица для всех камер
+CREATE TABLE shapes_locs (
+    cam_name          TEXT NOT NULL,
     origin_file_name  TEXT NOT NULL,        -- YYMMDDHHMMSS.jpg
     uid8              TEXT NOT NULL,        -- 22 цифры
     day               TEXT NOT NULL,        -- YYMMDD (денормализовано для срезов)
@@ -198,10 +199,11 @@ CREATE TABLE "<cam_name>_shapes_locs" (
     shape_zone_coords TEXT,                 -- JSON
     shape_zone        INTEGER NOT NULL,     -- 0/1
     face_zone_coords  TEXT,                 -- JSON
-    face_zone         INTEGER NOT NULL      -- 0/1
+    face_zone         INTEGER NOT NULL,     -- 0/1
+    PRIMARY KEY (cam_name, origin_file_name, uid8)
 );
-CREATE INDEX "idx_<cam_name>_day"  ON "<cam_name>_shapes_locs" (day);
-CREATE INDEX "idx_<cam_name>_uid8" ON "<cam_name>_shapes_locs" (uid8);
+CREATE INDEX idx_shapes_cam_day  ON shapes_locs (cam_name, day);
+CREATE INDEX idx_shapes_cam_uid8 ON shapes_locs (cam_name, uid8);
 
 -- Дни (сводка по камере и дню: источник данных и кол-во фото)
 CREATE TABLE days (
@@ -461,7 +463,16 @@ CREATE TABLE real_viscount (
 cd /root/workspace/CV_Monitoring_Retail_Outlets_System && .venv-linux/bin/python client/<script>.py
 ```
 
-### 12.3. Журнал изменений
+### 12.3. Доступ к камерам и тестирование загрузчиков
+
+- **Реальная камера (lobby, Camhi SD):** `192.168.0.13`, URL `http://admin:<пароль>@192.168.0.13/sd/` (креды в `tests/lobby_hiSDloader_v4_hiSDconfig.dat`, pickle). FTP-камеры — креды в `tests/chm1_hiFTPDloader_hiFTPconfig.dat`, `tests/chm2_hiFTPDloader_hiFTPconfig.dat`.
+- **Обход прокси (обязательно):** в WSL-песочнице стоит Privoxy и блокирует локальную сеть. Любой запрос к камере/локальной сети идёт с `proxies={'http': None, 'https': None}` (или `NO_PROXY`). Без этого камера отвечает `403 Request blocked (Privoxy@...)`.
+- **Проверка доступности:** `.venv-linux/bin/python` → `requests.get('http://admin:...@192.168.0.13/sd/', proxies={'http': None, 'https': None})` → `200`, 54 дня на SD (даты `YYYYMMDD`, ссылки `?nd/?dd/?sd`, `/sd/..`, `/sd/<день>/`).
+- **Головное тестирование загрузчика (без GUI):** 00/01 — GUI (PyQt5), в WSL без display не запускаются. Логику тестировать напрямую: `get_days()` → `get_day_folders()` → `get_video_links()` → `download_series()` (скачать 1 файл в temp). Структура дня: папки `imagesNNN/`, `recordNNN/`; имя фото `A<день><время>.jpg`; парсинг ссылок — `link['href'].split('/')[4]`.
+- **cwd_path:** в 00 после импортов есть редактируемая `cwd_path = os.getcwd()` (для теста — `os.path.join(os.getcwd(), 'tests', 'cams_media')`).
+- **Логи загрузчиков:** `{app_name}_event_log.csv` в `cwd_path`; с 2026-08-16 пишет полный traceback при любом падении (не только в `attempt_download`).
+
+### 12.4. Журнал изменений
 - 2026-08-16 — Составлена полная спецификация системы (изучены все модули, utils, сборка, руководство пользователя и `Описание_системы.docx`). Зафиксированы цели и технический долг.
 - 2026-08-16 — Проанализирован реальный срез базы в `temp/db/`; зафиксированы типы данных для SQLite, требование «shapes_locs отдельно на камеру», scope публикации (только ui/, utils/, корневые .py), цель №6 (унифицированный текстовый интерфейс).
 - 2026-08-16 — Спроектирована SQLite-схема (раздел 5). Приняты решения: `tlt` удалить полностью; `visitor_forecast` добавим в конце; комментарии очистить (цель №7).
@@ -481,3 +492,4 @@ cd /root/workspace/CV_Monitoring_Retail_Outlets_System && .venv-linux/bin/python
 - 2026-08-16 — П.1: путь к модели зафиксирован (`MODEL_REL_PATH`), добавлена проверка существования; подсчёт строк shapes в CV_SYS переведён на `db.shapes_count`. Убран выбор языка в 01 (п.16, единственный русский).
 - 2026-08-16 — П.8: pandas в `db.py` ленивый; лёгкие модули (02/03/06/09/11/01) без pandas. requirements.txt дополнен (beautifulsoup4, httpx, httpcore). Проверено: import лёгких модулей без pandas; тяжёлый DataFrame-путь работает.
 - 2026-08-16 — `11_FTPDataAlert_v1.py`: убран запуск из-под прокси (`HTTPXRequest`/`host.docker.internal:2080`), оставлен обычный запуск (планируется запуск под глобальным VPN).
+- 2026-08-16 — Решение Кэпа: `shapes_locs` переведён с отдельных таблиц `<cam>_shapes_locs` на **единую таблицу `shapes_locs` с полем `cam_name`**. Переписаны `db.write_shapes`/`read_shapes`/`build_shape_db_info`/`shapes_exist`/`shapes_count`. Проверено: миграция фикстуры (2 камеры, 289 018 строк в одной таблице), round-trip read_shapes (chm1 268 656 строк, uid8-выравнен), shapes_count, build_shape_db_info.

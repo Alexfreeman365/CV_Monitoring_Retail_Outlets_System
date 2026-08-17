@@ -359,7 +359,7 @@ class SaveRecalculateThread(QThread):
         if self.direction == 'shape_zone':
             set_shape_coords(date_start, date_end)
             if (len(date_start) & len(date_end)) != 0:
-                if os.path.exists(os.path.join(self.cwd_path, 'db', f'{short_name(cam_name)}_visitors.csv')):
+                if db.visitors_exist(short_name(cam_name), self.cwd_path):
                     update_visitors(cam_name, date_start, date_end, cwd_path=self.cwd_path)
         else:
             set_register_coords(date_start, date_end)

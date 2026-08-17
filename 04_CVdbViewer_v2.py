@@ -199,7 +199,7 @@ class EstimateThread(QThread):
                 else:
                     self.enable_disable_ui.emit(False)
                     df_cam = pd.DataFrame()
-                    if os.path.exists(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv')):
+                    if db.shapes_exist(cam_name, os.getcwd()):
                         df_cam = db.read_shapes(cam_name, os.getcwd())
 
                     slice_df = dt_slice_shape_df(df_cam, date_start, date_end)
@@ -396,7 +396,7 @@ class ParseThread(QThread):
                     # self.output_message.emit(text_wait)
 
                     df_cam = pd.DataFrame()
-                    if os.path.exists(os.path.join(os.getcwd(), 'db', f'{cam_name}_shapes_locs.csv')):
+                    if db.shapes_exist(cam_name, os.getcwd()):
                         df_cam = db.read_shapes(cam_name, os.getcwd())
 
                     total_df = dt_slice_shape_df(df_cam, date_start, date_end)
