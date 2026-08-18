@@ -531,3 +531,24 @@ cd /root/workspace/CV_Monitoring_Retail_Outlets_System && .venv-linux/bin/python
 - 2026-08-17 — Экспорт для дашборда: `db.export_dashboard_csv()` + CLI `export_visitors_csv.py` (legacy CSV `{short_name}_visitors.csv` / `{short_name}_noSeller_time.csv`, полная перезапись). Проверено: заголовки совпадают с `temp/db`.
 - 2026-08-17 — Удалена песочница `tests/`; реальные данные перенесены в корень проекта (рабочая база `db/cv.db`). Зафиксировано ограничение: штатная работа — один новый день за запуск.
 - 2026-08-17 — Пакетный пайплайн `CV_SYS_batch.py` (однократный, по группам магазина и по дням). В `shape_detection` добавлены параметры `only_day` и `skip_vis_count` (дефолты сохраняют real-time поведение). Проверено: группировка камер, сигнатура, `last_seen_day`.
+
+---
+
+## 13. Рефакторинг GUI-модулей (потокобезопасность Qt)
+
+Выполнено 2026-08-18. Причина: worker-потоки (классы-наследники `QThread`) читали и меняли Qt-виджеты напрямую из `run()` — `self.main_window.radioButton_*.isChecked()`, `self.main_window.le_*.text()`, `self.main_window.progressBar_*.value()`, `self.main_window.pb_*.setEnabled(...)`. Это нарушение потоковой модели Qt (доступ к QWidget вне GUI-потока) и источник нативного краша `0xC0000409 (STATUS_STACK_BUFFER_OVERRUN)`, который не ловится Python `try/except`.
+
+**Принцип правки:** значения виджетов снимаются в `__init__` потока (выполняется в главном потоке до `moveToThread`); в `run()` используются только сохранённые поля; прогресс-бары считаются локально через `enumerate` и передаются сигналами; любые изменения GUI идут только через `pyqtSignal` → слот.
+
+### Что изменено по модулям
+
+- **00_hiSDloader_v4** (3 потока: EstimateThread, ParseThread, GetDays) — сняты `radioButton_*` (`rb_*`), `lineEdit_cam_name` (`cam_name`), `token`/`chat_id`; прогресс-бары через `day_idx`/`link_idx`; авто-режим переведён с `while radioButton_auto.isChecked()` на флаг `self._stop`; добавлен `stop_auto_thread()` — остановка авто-потока перед запуском нового потока.
+- **01_hiFTPDloader_v3** (4 потока: GetDays, EstimateThread, ParseThread, DeleteThread) — аналогично 00 + `radioButton_with_deletion` (`with_deletion_status`), `output_dir` → `self.output_dir`; `stop_auto_thread()`.
+- **04_CVdbViewer_v2** (2 потока) — сняты `cb_*`, `le_cam_name`, `le_certain_zone`, `cb_shape_bbox/zone/face_zone`; `progressBar.value()` → `file_idx` (enumerate); `pb_choose_cam`/`le_cam_name` `setEnabled` из потока вынесены в отдельный сигнал `cam_choose_enable` → слот `set_cam_choose_enabled` (чтобы кнопка «Камеры» оставалась активной при старте).
+- **05_CVsetCam_v2** (1 поток: SaveRecalculateThread) — сняты `le_cam_name`, `le_date_start/end`, `le_shape_zone_1/2/3`, `le_register_zone`, `text_wait`, `text_saved_successfully` (правки точечные, чтобы не задеть окна ShowCams/Showlast10days/ShowZoneWindow/SetZoneWindow).
+- **08_CVdbArchivator_v2** (2 потока) — сняты `le_cam_name`, `le_cutoff_day`, `text_done`, `text_data_error`.
+- **10_hiSampler_v2** (2 потока) — сняты `radioButton_over_3/5/10`, `checkBox_move`.
+
+### Известные ограничения (не решено)
+
+- **Авто-режим загрузчиков (00/01):** тоглер `radioButton_auto` отключается (`setEnabled(False)`) во время работы авто-цикла, поэтому выключить авто через UI невозможно; при запуске другого действия (переподключение к камере) во время активного авто-потока возможен нативный краш. Точная причина не установлена (нужен Windows-отладчик); подозревается паттерн «QThread-в-QThread» (worker-наследник QThread, перемещённый в другой QThread через `moveToThread`). Оставлено на будущее.

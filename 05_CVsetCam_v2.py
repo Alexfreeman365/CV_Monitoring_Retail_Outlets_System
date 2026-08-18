@@ -280,6 +280,15 @@ class SaveRecalculateThread(QThread):
         self.main_window = main_window
         self.direction = direction
         self.cwd_path = os.getcwd() # r'L:\Active_pjs\RG' # os.getcwd()
+        self.cam_name = self.main_window.le_cam_name.text()
+        self.date_start = self.main_window.le_date_start.text()
+        self.date_end = self.main_window.le_date_end.text()
+        self.shape_zone_1 = self.main_window.le_shape_zone_1.text()
+        self.shape_zone_2 = self.main_window.le_shape_zone_2.text()
+        self.shape_zone_3 = self.main_window.le_shape_zone_3.text()
+        self.register_zone = self.main_window.le_register_zone.text()
+        self.text_wait = self.main_window.text_wait
+        self.text_saved_successfully = self.main_window.text_saved_successfully
 
     def run(self):
         def change_camconfig_shape_zone(cam_name, shape_zone_coords):
@@ -293,8 +302,8 @@ class SaveRecalculateThread(QThread):
             save_camconfig(camconfig)
 
         def change_df_cam_shape_zone(cam_name, shape_zone_coords):
-            date_start = self.main_window.le_date_start.text()
-            date_end = self.main_window.le_date_end.text()
+            date_start = self.date_start
+            date_end = self.date_end
             df_cam = db.read_shapes(cam_name, self.cwd_path)
             df = df_cam.copy()
             dt_end_full = str(int(date_end) + 1)
@@ -306,8 +315,8 @@ class SaveRecalculateThread(QThread):
             db.write_shapes(cam_name, df, self.cwd_path, mode='replace')
 
         def change_df_cam_face_zone(cam_name, face_zone_coords):
-            date_start = self.main_window.le_date_start.text()
-            date_end = self.main_window.le_date_end.text()
+            date_start = self.date_start
+            date_end = self.date_end
             df_cam = db.read_shapes(cam_name, self.cwd_path)
             df = df_cam.copy()
             dt_end_full = str(int(date_end) + 1)
@@ -320,14 +329,14 @@ class SaveRecalculateThread(QThread):
 
         def set_shape_coords(date_start, date_end):
             coords_list = []
-            if len(self.main_window.le_shape_zone_1.text()) != 0:
-                coords1 = get_coords_from_text(self.main_window.le_shape_zone_1.text())
+            if len(self.shape_zone_1) != 0:
+                coords1 = get_coords_from_text(self.shape_zone_1)
                 coords_list.append(coords1)
-            if len(self.main_window.le_shape_zone_2.text()) != 0:
-                coords2 = get_coords_from_text(self.main_window.le_shape_zone_2.text())
+            if len(self.shape_zone_2) != 0:
+                coords2 = get_coords_from_text(self.shape_zone_2)
                 coords_list.append(coords2)
-            if len(self.main_window.le_shape_zone_3.text()) != 0:
-                coords3 = get_coords_from_text(self.main_window.le_shape_zone_3.text())
+            if len(self.shape_zone_3) != 0:
+                coords3 = get_coords_from_text(self.shape_zone_3)
                 coords_list.append(coords3)
             if len(coords_list) != 0:
                 if (len(date_start) & len(date_end)) == 0:
@@ -342,18 +351,18 @@ class SaveRecalculateThread(QThread):
                         change_df_cam_shape_zone(cam_name, str(coords_list))
 
         def set_register_coords(date_start, date_end):
-            if len(self.main_window.le_register_zone.text()) != 0:
-                coords = self.main_window.le_register_zone.text()
+            if len(self.register_zone) != 0:
+                coords = self.register_zone
                 if (len(date_start) & len(date_end)) == 0:
                     change_camconfig_face_zone(cam_name, coords)
                 else:
                     change_df_cam_face_zone(cam_name, coords)
 
-        cam_name = self.main_window.le_cam_name.text()
-        date_start = self.main_window.le_date_start.text()
-        date_end = self.main_window.le_date_end.text()
-        text_wait = self.main_window.text_wait
-        text_saved_successfully = self.main_window.text_saved_successfully
+        cam_name = self.cam_name
+        date_start = self.date_start
+        date_end = self.date_end
+        text_wait = self.text_wait
+        text_saved_successfully = self.text_saved_successfully
 
         self.output_message.emit(text_wait)
         if self.direction == 'shape_zone':

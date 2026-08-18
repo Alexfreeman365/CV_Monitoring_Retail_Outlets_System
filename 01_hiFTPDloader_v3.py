@@ -84,7 +84,7 @@ class GetDays(QThread):
                 self.cameras = [i for i in ftp.nlst(path) if i not in ['.', '..', 'System Volume Information']]
             self.cameras_message.emit(self.cameras)
 
-            if len(self.main_window.lineEdit_cam_name.text()) == 0:
+            if len(self.cam_name) == 0:
                 text_choose_camera = '<FONT COLOR=#008000>' \
                                      'Выберите камеру в списке под кнопкой «[Камеры]» ' \
                                      'и введите её название без кавычек в поле «Камера»</FONT>'
@@ -156,6 +156,11 @@ class EstimateThread(QThread):
         self.text_day_files_size = ''
         self.text_total = ''
 
+        self.rb_str = self.main_window.radioButton_str.isChecked()
+        self.rb_images = self.main_window.radioButton_images.isChecked()
+        self.rb_alarm = self.main_window.radioButton_alarm.isChecked()
+        self.rb_refresh = self.main_window.radioButton_refresh.isChecked()
+
         self.text_wait = self.main_window.text_wait
 
     def run(self):
@@ -193,7 +198,7 @@ class EstimateThread(QThread):
         def time_condition_str(link):
             video_time_start = link.split('/')[-1].split('_')[1]
             video_time_end = link.split('/')[-1].split('_')[2].split('.')[0]
-            if self.main_window.radioButton_str.isChecked():
+            if self.rb_str:
                 time_condition = ((self.str_from <= video_time_start) & (video_time_end <= self.str_to))
             else:
                 time_condition = False
@@ -201,7 +206,7 @@ class EstimateThread(QThread):
 
         def image_time_condition_str(link):
             image_time = link.split('/')[-1].split('.')[0][7:13]
-            if self.main_window.radioButton_str.isChecked():
+            if self.rb_str:
                 time_condition = ((self.str_from <= image_time) & (image_time <= self.str_to))
             else:
                 time_condition = False
@@ -219,12 +224,12 @@ class EstimateThread(QThread):
             file_type_images = '_photos'
             file_type_record = '_videos'
 
-            if self.main_window.radioButton_images.isChecked():
+            if self.rb_images:
                 image_path = os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type_images)
                 if os.path.exists(image_path):
                     image_last_pc_day = os.listdir(image_path)[-1]
 
-            if self.main_window.radioButton_alarm.isChecked():
+            if self.rb_alarm:
                 video_path = os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type_record)
                 if os.path.exists(video_path):
                     video_last_pc_day = os.listdir(video_path)[-1]
@@ -240,13 +245,13 @@ class EstimateThread(QThread):
         def get_summary(image_day_start, video_day_start, image_day_end, video_day_end):
             # Pass through all days included in the selected range
             self.progress_days_start.emit(len(self.days))
-            for day in self.days:
+            for day_idx, day in enumerate(self.days):
                 # Defining folders for this day
                 day_folders = get_day_folders(day)
                 day_video_folders = [folder for folder in day_folders if folder[0] == 'r']
                 day_image_folders = [folder for folder in day_folders if folder[0] == 'i']
 
-                if self.main_window.radioButton_images.isChecked():
+                if self.rb_images:
                     if image_day_start <= day <= image_day_end:
                         ftp = ftplib.FTP(self.ftp_host)
                         ftp.login(self.ftp_user, self.ftp_pas)
@@ -262,7 +267,7 @@ class EstimateThread(QThread):
                                     folder_files_links.append(link)
                             self.files_num += len(folder_files_links)
 
-                if self.main_window.radioButton_alarm.isChecked():
+                if self.rb_alarm:
                     if video_day_start <= day <= video_day_end:
                         ftp = ftplib.FTP(self.ftp_host)
                         ftp.login(self.ftp_user, self.ftp_pas)
@@ -279,7 +284,7 @@ class EstimateThread(QThread):
                             self.files_num += len(folder_files_links)
 
                 # Setting the progress bar execution sequence
-                value_days = self.main_window.progressBar_total.value() + 1
+                value_days = day_idx + 1
                 self.progress_days_process.emit(value_days)
             self.progress_days_process.emit(len(self.days))
             # Returns the number of videos and their size in the time range selected by the user
@@ -294,11 +299,11 @@ class EstimateThread(QThread):
             # Getting a list of existing days on the SD card
             self.days, self.dd = get_days_dd()
 
-            if self.main_window.radioButton_refresh.isChecked():
+            if self.rb_refresh:
                 image_day_start, video_day_start = get_last_pc_day()
                 image_day_end, video_day_end = self.days[-1], self.days[-1]
 
-                if self.main_window.radioButton_images.isChecked():
+                if self.rb_images:
                     self.range_days_num = self.days.index(image_day_end) - self.days.index(image_day_start) + 1
                 else:
                     self.range_days_num = self.days.index(video_day_end) - self.days.index(video_day_start) + 1
@@ -364,6 +369,12 @@ class ParseThread(QThread):
         self.image_links_dict = {}
         self.video_links_dict = {}
         self.with_deletion_status = self.main_window.radioButton_with_deletion.isChecked()
+        self.rb_str = self.main_window.radioButton_str.isChecked()
+        self.rb_images = self.main_window.radioButton_images.isChecked()
+        self.rb_alarm = self.main_window.radioButton_alarm.isChecked()
+        self.rb_refresh = self.main_window.radioButton_refresh.isChecked()
+        self.rb_auto = self.main_window.radioButton_auto.isChecked()
+        self._stop = False
 
         self.text_wait = self.main_window.text_wait
         self.text_done = self.main_window.text_done
@@ -404,7 +415,7 @@ class ParseThread(QThread):
         def time_condition_str(link):
             video_time_start = link.split('/')[-1].split('_')[1]
             video_time_end = link.split('/')[-1].split('_')[2].split('.')[0]
-            if self.main_window.radioButton_str.isChecked():
+            if self.rb_str:
                 time_condition = ((self.str_from <= video_time_start) & (video_time_end <= self.str_to))
             else:
                 time_condition = False
@@ -412,7 +423,7 @@ class ParseThread(QThread):
 
         def image_time_condition_str(link):
             image_time = link.split('/')[-1].split('.')[0][7:13]
-            if self.main_window.radioButton_str.isChecked():
+            if self.rb_str:
                 time_condition = ((self.str_from <= image_time) & (image_time <= self.str_to))
             else:
                 time_condition = False
@@ -430,12 +441,12 @@ class ParseThread(QThread):
             file_type_images = '_photos'
             file_type_record = '_videos'
 
-            if self.main_window.radioButton_images.isChecked():
+            if self.rb_images:
                 image_path = os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type_images)
                 if os.path.exists(image_path):
                     image_last_pc_day = os.listdir(image_path)[-1]
 
-            if self.main_window.radioButton_alarm.isChecked():
+            if self.rb_alarm:
                 video_path = os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type_record)
                 if os.path.exists(video_path):
                     video_last_pc_day = os.listdir(video_path)[-1]
@@ -457,7 +468,7 @@ class ParseThread(QThread):
                 day_image_links = []
                 day_video_links = []
 
-                if self.main_window.radioButton_images.isChecked():
+                if self.rb_images:
                     if image_day_start <= day <= image_day_end:
                         ftp = ftplib.FTP(self.ftp_host)
                         ftp.login(self.ftp_user, self.ftp_pas)
@@ -477,7 +488,7 @@ class ParseThread(QThread):
                         if len(day_image_links) > 0:
                             self.image_links_dict[day] = day_image_links
 
-                if self.main_window.radioButton_alarm.isChecked():
+                if self.rb_alarm:
                     if video_day_start <= day <= video_day_end:
                         ftp = ftplib.FTP(self.ftp_host)
                         ftp.login(self.ftp_user, self.ftp_pas)
@@ -505,7 +516,7 @@ class ParseThread(QThread):
             file_type_images = '_photos'
             file_type_record = '_videos'
 
-            if self.main_window.radioButton_images.isChecked():
+            if self.rb_images:
                 image_path = os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type_images)
                 if os.path.exists(image_path):
                     try:
@@ -515,7 +526,7 @@ class ParseThread(QThread):
                     except:
                         pass
 
-            if self.main_window.radioButton_alarm.isChecked():
+            if self.rb_alarm:
                 video_path = os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type_record)
                 if os.path.exists(video_path):
                     try:
@@ -529,7 +540,7 @@ class ParseThread(QThread):
 
         def download_files(ftp, file_type, image_last_pc_day_filenames,
                            video_last_pc_day_filenames, day, links, deletion):
-            for link in links:
+            for link_idx, link in enumerate(links):
                 try:
                     # Getting a title for a future video
                     file_line = link.split('/')[-1]
@@ -541,7 +552,7 @@ class ParseThread(QThread):
                     if file_type in ['_images', '_photos']:
                         file_name = file_title[1:] + '.' + file_extension
                         if file_name not in image_last_pc_day_filenames:
-                            with open(os.path.join(self.main_window.output_dir, self.cam_name.split('/')[-1] + file_type,
+                            with open(os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type,
                                                    day, file_name), 'wb') as file:
                                 ftp.retrbinary(f"RETR {link}", file.write)
                         if self.with_deletion_status and deletion:
@@ -550,13 +561,13 @@ class ParseThread(QThread):
                     if file_type in ['_videos', '_videos']:
                         file_name = file_title[1:] + '_' + file_status + '.' + file_extension
                         if file_name not in video_last_pc_day_filenames:
-                            with open(os.path.join(self.main_window.output_dir, self.cam_name.split('/')[-1] + file_type,
+                            with open(os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type,
                                                    day, file_name), 'wb') as file:
                                 ftp.retrbinary(f"RETR {link}", file.write)
                         if self.with_deletion_status and deletion:
                             ftp.delete(link)
                     # Updating the progress bar for videos
-                    count_progress = self.main_window.progressBar_videos.value() + 1
+                    count_progress = link_idx + 1
                     self.progress_videos_process.emit(count_progress)
                 except (ftplib.error_temp, ftplib.error_perm) as e:
                     # If the connection fails, reconnect
@@ -577,33 +588,33 @@ class ParseThread(QThread):
             if links_dict_ == self.image_links_dict:
                 file_type = '_photos'
 
-                if os.path.exists(self.main_window.output_dir + self.cam_name.split('/')[-1] + file_type):
+                if os.path.exists(self.output_dir + self.cam_name.split('/')[-1] + file_type):
                     pass
                 else:
                     if len(self.image_links_dict) != 0:
-                        os.mkdir(self.main_window.output_dir + self.cam_name.split('/')[-1] + file_type)
+                        os.mkdir(self.output_dir + self.cam_name.split('/')[-1] + file_type)
             else:
                 file_type = '_videos'
 
-                if os.path.exists(self.main_window.output_dir + self.cam_name.split('/')[-1] + file_type):
+                if os.path.exists(self.output_dir + self.cam_name.split('/')[-1] + file_type):
                     pass
                 else:
                     if len(self.video_links_dict) != 0:
-                        os.mkdir(self.main_window.output_dir + self.cam_name.split('/')[-1] + file_type)
+                        os.mkdir(self.output_dir + self.cam_name.split('/')[-1] + file_type)
 
             image_last_pc_day_filenames, video_last_pc_day_filenames = get_last_day_filenames()
 
             # A passage for each day from the dictionary to get links to the video
             self.progress_days_start.emit(len(links_dict_))
             self.progress_videos_start.emit(10)
-            for day in links_dict_.keys():
+            for day_idx, day in enumerate(links_dict_.keys()):
                 ftp = ftplib.FTP(self.ftp_host)
                 ftp.login(self.ftp_user, self.ftp_pas)
                 # Creating a folder with the name of the day.
-                if os.path.exists(os.path.join(self.main_window.output_dir, self.cam_name.split('/')[-1] + file_type, day)):
+                if os.path.exists(os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type, day)):
                     pass  # shutil.rmtree(self.output_dir + day)
                 else:
-                    os.mkdir(os.path.join(self.main_window.output_dir, self.cam_name.split('/')[-1] + file_type, day))
+                    os.mkdir(os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type, day))
 
                 # Getting a list of links for the current day
                 links = links_dict_[day]
@@ -614,7 +625,7 @@ class ParseThread(QThread):
                 download_files(ftp, file_type, image_last_pc_day_filenames,
                                video_last_pc_day_filenames, day, links, deletion=False)
 
-                day_path = os.path.join(self.main_window.output_dir, self.cam_name.split('/')[-1] + file_type, day)
+                day_path = os.path.join(self.output_dir, self.cam_name.split('/')[-1] + file_type, day)
                 for file in os.listdir(day_path):
                     file_size = os.path.getsize(os.path.join(day_path, file))
                     if file_size == 0:
@@ -650,7 +661,7 @@ class ParseThread(QThread):
 
 
                 # Updating the progress bar for days
-                value_days = self.main_window.progressBar_days.value() + 1
+                value_days = day_idx + 1
                 self.progress_days_process.emit(value_days)
 
             # Improving the user interface.
@@ -672,11 +683,11 @@ class ParseThread(QThread):
                 self.days, self.dd = get_days_dd()
 
                 if mode == 'main':
-                    if self.main_window.radioButton_refresh.isChecked():
+                    if self.rb_refresh:
                         image_day_start, video_day_start = get_last_pc_day()
                         image_day_end, video_day_end = self.days[-1], self.days[-1]
 
-                        if self.main_window.radioButton_images.isChecked():
+                        if self.rb_images:
                             range_days_num = self.days.index(image_day_end) - self.days.index(image_day_start) + 1
                         else:
                             range_days_num = self.days.index(video_day_end) - self.days.index(video_day_start) + 1
@@ -703,7 +714,7 @@ class ParseThread(QThread):
                         image_day_start, video_day_start = get_last_pc_day()
                         image_day_end, video_day_end = self.days[-1], self.days[-1]
 
-                        if self.main_window.radioButton_images.isChecked():
+                        if self.rb_images:
                             range_days_num = (self.days.index(image_day_end) -
                                               self.days.index(image_day_start) + 1)
                         else:
@@ -749,10 +760,10 @@ class ParseThread(QThread):
         # The main execution cycle
         success = attempt_download(self.text_wait, mode='main')
 
-        if self.main_window.radioButton_auto.isChecked():
+        if self.rb_auto:
             self.ftr_from = self.main_window.ftr_from
             self.ftr_to = self.main_window.ftr_to
-            while self.main_window.radioButton_auto.isChecked():
+            while not self._stop:
                 try:
                     # Sending a message to the user about the need to wait
                     text_wait = '<FONT COLOR=#02a8ab>-=:АВТО_ОБНОВЛЕНИЕ_АРХИВА:=-</FONT>'
@@ -808,6 +819,11 @@ class DeleteThread(QThread):
         self.day_folders = []
         self.range_days_num = 0
 
+        self.rb_str = self.main_window.radioButton_str.isChecked()
+        self.rb_images = self.main_window.radioButton_images.isChecked()
+        self.rb_alarm = self.main_window.radioButton_alarm.isChecked()
+        self.rb_refresh = self.main_window.radioButton_refresh.isChecked()
+
         self.text_wait = self.main_window.text_wait
         self.text_done = self.main_window.text_done
 
@@ -846,7 +862,7 @@ class DeleteThread(QThread):
         def time_condition_str(link):
             video_time_start = link.split('/')[-1].split('_')[1]
             video_time_end = link.split('/')[-1].split('_')[2].split('.')[0]
-            if self.main_window.radioButton_str.isChecked():
+            if self.rb_str:
                 time_condition = ((self.str_from <= video_time_start) & (video_time_end <= self.str_to))
             else:
                 time_condition = False
@@ -854,7 +870,7 @@ class DeleteThread(QThread):
 
         def image_time_condition_str(link):
             image_time = link.split('/')[-1].split('.')[0][7:13]
-            if self.main_window.radioButton_str.isChecked():
+            if self.rb_str:
                 time_condition = ((self.str_from <= image_time) & (image_time <= self.str_to))
             else:
                 time_condition = False
@@ -871,13 +887,13 @@ class DeleteThread(QThread):
             ftp.login(self.ftp_user, self.ftp_pas)
             # Pass through all days included in the selected range
             self.progress_days_start.emit(len(self.days))
-            for day in self.days:
+            for day_idx, day in enumerate(self.days):
                 # Defining folders for this day
                 day_folders = get_day_folders(day)
                 day_video_folders = [folder for folder in day_folders if folder[0] == 'r']
                 day_image_folders = [folder for folder in day_folders if folder[0] == 'i']
 
-                if self.main_window.radioButton_images.isChecked():
+                if self.rb_images:
                     if image_day_start <= day <= image_day_end:
                         for folder in day_image_folders:
                             path = self.cam_name + '/' + f'{self.dd}'.join((day[:4], day[4:6], day[6:])) + '/' + folder
@@ -887,7 +903,7 @@ class DeleteThread(QThread):
                                 if image_time_condition_ftr(link) | image_time_condition_str(link):
                                     ftp.delete(link)
 
-                if self.main_window.radioButton_alarm.isChecked():
+                if self.rb_alarm:
                     if video_day_start <= day <= video_day_end:
                         for folder in day_video_folders:
                             path = self.cam_name + '/' + f'{self.dd}'.join((day[:4], day[4:6], day[6:])) + '/' + folder
@@ -919,7 +935,7 @@ class DeleteThread(QThread):
                     pass
 
                 # Setting the progress bar execution sequence
-                value_days = self.main_window.progressBar_total.value() + 1
+                value_days = day_idx + 1
                 self.progress_days_process.emit(value_days)
             self.progress_days_process.emit(len(self.days))
 
@@ -932,11 +948,11 @@ class DeleteThread(QThread):
             # Getting a list of existing days on the SD card
             self.days, self.dd = get_days_dd()
 
-            if self.main_window.radioButton_refresh.isChecked():
+            if self.rb_refresh:
                 image_day_start, video_day_start = self.days[0], self.days[0]
                 image_day_end, video_day_end = self.days[-1], self.days[-1]
 
-                if self.main_window.radioButton_images.isChecked():
+                if self.rb_images:
                     self.range_days_num = self.days.index(image_day_end) - self.days.index(image_day_start) + 1
                 else:
                     self.range_days_num = self.days.index(video_day_end) - self.days.index(video_day_start) + 1
@@ -1122,6 +1138,17 @@ class UI(QDialog):
         self.worker_3.cameras_message.connect(self.sending_message_cameras)
         self.thread_3.start()
 
+    def stop_auto_thread(self):
+        # Stop the auto-download worker before launching another thread
+        # to avoid two threads touching the GUI simultaneously.
+        if self.worker_2 is not None:
+            self.worker_2._stop = True
+            try:
+                if self.thread_2 is not None and self.thread_2.isRunning():
+                    self.thread_2.wait(5000)
+            except RuntimeError:
+                pass
+
     # A slot for a button that connects to the camera and parses its SD card.
     # This is a fast task, so it is executed in the main thread.
     def button_days_clicked(self):
@@ -1136,6 +1163,7 @@ class UI(QDialog):
         self.progressBar_days.setValue(0)
         self.progressBar_videos.setValue(0)
         self.label_out.setText('')
+        self.stop_auto_thread()
         self.run_GetDays()
 
     def button_days_list_clicked(self):
@@ -1369,6 +1397,7 @@ class UI(QDialog):
         self.progressBar_pb_delete_from_ftp.setValue(0)
         self.label_out.setText('')
         self.label_wishes_thanks.setText('')
+        self.stop_auto_thread()
         self.run_EstimateThread()
 
     # The following 5 functions belong to the second working thread to videos downloading
@@ -1427,6 +1456,7 @@ class UI(QDialog):
                        self.check_hour_input(self.lineEdit_str_to_min.text()) + '00')
         self.progressBar_pb_delete_from_ftp.setValue(0)
         self.label_wishes_thanks.setText('')
+        self.stop_auto_thread()
         self.run_ParseThread()
 
     def set_progress_bar_delete_start(self, progress_days_max):
@@ -1477,6 +1507,7 @@ class UI(QDialog):
         self.progressBar_days.setValue(0)
         self.progressBar_videos.setValue(0)
         self.label_out.setText('')
+        self.stop_auto_thread()
         self.run_DeleteThread()
 
     # Feedback button

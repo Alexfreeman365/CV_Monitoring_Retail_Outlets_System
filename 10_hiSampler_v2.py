@@ -30,6 +30,9 @@ class EstimateThread(QThread):
         super(EstimateThread, self).__init__(parent)
         self.main_window = main_window
         self.cwd_path = self.main_window.cwd_path
+        self.rb_over_3 = self.main_window.radioButton_over_3.isChecked()
+        self.rb_over_5 = self.main_window.radioButton_over_5.isChecked()
+        self.rb_over_10 = self.main_window.radioButton_over_10.isChecked()
         self.text_wait = self.main_window.text_wait
         self.text_success = self.main_window.text_success
 
@@ -37,11 +40,11 @@ class EstimateThread(QThread):
         # Function to get the entire range of days existing on the SD card
         def total_and_sample_num():
             step_of_frames = int
-            if self.main_window.radioButton_over_3.isChecked():
+            if self.rb_over_3:
                 step_of_frames = 3
-            if self.main_window.radioButton_over_5.isChecked():
+            if self.rb_over_5:
                 step_of_frames = 5
-            if self.main_window.radioButton_over_10.isChecked():
+            if self.rb_over_10:
                 step_of_frames = 10
 
             img_names = [img for img in os.listdir(self.cwd_path) if img.endswith(('.jpg', '.png', 'jpeg'))]
@@ -78,17 +81,21 @@ class ParseThread(QThread):
         super(ParseThread, self).__init__(parent)
         self.main_window = main_window
         self.cwd_path = self.main_window.cwd_path
+        self.rb_over_3 = self.main_window.radioButton_over_3.isChecked()
+        self.rb_over_5 = self.main_window.radioButton_over_5.isChecked()
+        self.rb_over_10 = self.main_window.radioButton_over_10.isChecked()
+        self.cb_move = self.main_window.checkBox_move.isChecked()
         self.text_wait = self.main_window.text_wait
         self.text_done = self.main_window.text_done
 
     def run(self):
         def choice():
             step_of_frames = int
-            if self.main_window.radioButton_over_3.isChecked():
+            if self.rb_over_3:
                 step_of_frames = 3
-            if self.main_window.radioButton_over_5.isChecked():
+            if self.rb_over_5:
                 step_of_frames = 5
-            if self.main_window.radioButton_over_10.isChecked():
+            if self.rb_over_10:
                 step_of_frames = 10
 
             img_names = [img for img in os.listdir(self.cwd_path) if img.endswith(('.jpg', '.png', 'jpeg'))]
@@ -105,7 +112,7 @@ class ParseThread(QThread):
                 if len(short_list_names) != 0:
                     os.mkdir(os.path.join(self.cwd_path, new_folder_name))
 
-            if self.main_window.checkBox_move.isChecked():
+            if self.cb_move:
                 for img_name in short_list_names:
                     src_path = os.path.join(self.cwd_path, img_name)
                     dist_path = os.path.join(self.cwd_path, new_folder_name, img_name)

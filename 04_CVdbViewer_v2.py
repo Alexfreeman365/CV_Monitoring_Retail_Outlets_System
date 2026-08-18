@@ -166,6 +166,12 @@ class EstimateThread(QThread):
     def __init__(self, main_window, parent=None):
         super(EstimateThread, self).__init__(parent)
         self.main_window = main_window
+        self.cam_name = self.main_window.le_cam_name.text()
+        self.cb_general_det_aria = self.main_window.cb_general_det_aria.isChecked()
+        self.cb_more_then_two = self.main_window.cb_more_then_two.isChecked()
+        self.cb_at_cash_register = self.main_window.cb_at_cash_register.isChecked()
+        self.cb_certain_zone = self.main_window.cb_certain_zone.isChecked()
+        self.le_certain_zone = self.main_window.le_certain_zone.text()
 
     def run(self):
         def zone_intersections(df, zone_coords):
@@ -176,7 +182,7 @@ class EstimateThread(QThread):
 
         ip_cam_data_paths_dict = self.main_window.ip_cam_data_paths_dict
         cam_names = self.main_window.cam_names
-        cam_name = self.main_window.le_cam_name.text()
+        cam_name = self.cam_name
         date_start = self.main_window.date_start
         date_end = self.main_window.date_end
 
@@ -204,22 +210,22 @@ class EstimateThread(QThread):
 
                     slice_df = dt_slice_shape_df(df_cam, date_start, date_end)
 
-                    if self.main_window.cb_general_det_aria.isChecked():
+                    if self.cb_general_det_aria:
                         slice_df = slice_df[slice_df['shape_zone'] == 1]
                         df_ones = slice_df.drop_duplicates('origin_file_name')
                         total_num = len(df_ones)
 
-                        if self.main_window.cb_more_then_two.isChecked():
+                        if self.cb_more_then_two:
                             df_mto = slice_df[slice_df.duplicated(subset='origin_file_name', keep=False)]
                             df_mto_ones = df_mto.drop_duplicates('origin_file_name')
                             total_num = len(df_mto_ones)
-                            if self.main_window.cb_at_cash_register.isChecked():
+                            if self.cb_at_cash_register:
                                 df_mto_reg = df_mto[df_mto['face_zone'] == 1]
                                 df_mto_ones_reg = df_mto_reg.drop_duplicates('origin_file_name')
                                 total_num = len(df_mto_ones_reg)
 
-                        if not self.main_window.cb_more_then_two.isChecked():
-                            if self.main_window.cb_at_cash_register.isChecked():
+                        if not self.cb_more_then_two:
+                            if self.cb_at_cash_register:
                                 slice_df_reg = slice_df[slice_df['face_zone'] == 1]
                                 df_ones_reg = slice_df_reg.drop_duplicates('origin_file_name')
                                 total_num = len(df_ones_reg)
@@ -228,23 +234,23 @@ class EstimateThread(QThread):
                         df_ones = slice_df.drop_duplicates('origin_file_name')
                         total_num = len(df_ones)
 
-                        if self.main_window.cb_more_then_two.isChecked():
+                        if self.cb_more_then_two:
                             df_mto = slice_df[slice_df.duplicated(subset='origin_file_name', keep=False)]
                             df_mto_ones = df_mto.drop_duplicates('origin_file_name')
                             total_num = len(df_mto_ones)
-                            if self.main_window.cb_at_cash_register.isChecked():
+                            if self.cb_at_cash_register:
                                 df_mto_reg = df_mto[df_mto['face_zone'] == 1]
                                 df_mto_ones_reg = df_mto_reg.drop_duplicates('origin_file_name')
                                 total_num = len(df_mto_ones_reg)
 
-                        if not self.main_window.cb_more_then_two.isChecked():
-                            if self.main_window.cb_at_cash_register.isChecked():
+                        if not self.cb_more_then_two:
+                            if self.cb_at_cash_register:
                                 slice_df_reg = slice_df[slice_df['face_zone'] == 1]
                                 df_ones_reg = slice_df_reg.drop_duplicates('origin_file_name')
                                 total_num = len(df_ones_reg)
 
-                    if self.main_window.cb_certain_zone.isChecked():
-                        zone_coords = self.main_window.le_certain_zone.text()
+                    if self.cb_certain_zone:
+                        zone_coords = self.le_certain_zone
                         slice_df_cert = zone_intersections(slice_df, zone_coords)
                         df_ones_cert = slice_df_cert.drop_duplicates('origin_file_name')
                         total_num = len(df_ones_cert)
@@ -261,10 +267,20 @@ class ParseThread(QThread):
     enable_disable_ui = pyqtSignal(bool)
     progress_bar_start = pyqtSignal(int)
     progress_bar_process = pyqtSignal(int)
+    cam_choose_enable = pyqtSignal(bool)
 
     def __init__(self, main_window, parent=None):
         super(ParseThread, self).__init__(parent)
         self.main_window = main_window
+        self.cam_name = self.main_window.le_cam_name.text()
+        self.cb_general_det_aria = self.main_window.cb_general_det_aria.isChecked()
+        self.cb_more_then_two = self.main_window.cb_more_then_two.isChecked()
+        self.cb_at_cash_register = self.main_window.cb_at_cash_register.isChecked()
+        self.cb_certain_zone = self.main_window.cb_certain_zone.isChecked()
+        self.le_certain_zone = self.main_window.le_certain_zone.text()
+        self.cb_shape_bbox = self.main_window.cb_shape_bbox.isChecked()
+        self.cb_shape_zone = self.main_window.cb_shape_zone.isChecked()
+        self.cb_face_zone = self.main_window.cb_face_zone.isChecked()
 
     def run(self):
         def rectangle_on_shape(img, shape_location, star_position='right'):
@@ -319,7 +335,7 @@ class ParseThread(QThread):
             df_ones = df.drop_duplicates('origin_file_name')
             df_mto = df[df.duplicated(subset='origin_file_name', keep=False)]
             self.progress_bar_start.emit(len(df_ones))
-            for i, row in df_ones.iterrows():
+            for file_idx, (_, row) in enumerate(df_ones.iterrows()):
                 if row['origin_file_name'] in df_mto['origin_file_name'].values:
                     one_frame_shapes = df_mto[df_mto['origin_file_name'] == row['origin_file_name']]
                     images_path = ip_cam_data_paths_dict[cam_name]
@@ -332,8 +348,8 @@ class ParseThread(QThread):
                                 rectangle_on_shape(img, get_coords_from_text(rrow['shape_location']))
                         if shape_zone_status:
                             zone_coords = rrow['shape_zone_coords']
-                            if self.main_window.cb_certain_zone.isChecked():
-                                zone_coords = self.main_window.le_certain_zone.text()
+                            if self.cb_certain_zone:
+                                zone_coords = self.le_certain_zone
                             for ii, rrow in one_frame_shapes.iterrows():
                                 show_zone(img, get_coords_from_text(zone_coords))
                         if face_zone_status:
@@ -353,8 +369,8 @@ class ParseThread(QThread):
                             rectangle_on_shape(img, get_coords_from_text(row['shape_location']))
                         if shape_zone_status:
                             zone_coords = row['shape_zone_coords']
-                            if self.main_window.cb_certain_zone.isChecked():
-                                zone_coords = self.main_window.le_certain_zone.text()
+                            if self.cb_certain_zone:
+                                zone_coords = self.le_certain_zone
                             show_zone(img, get_coords_from_text(zone_coords))
                         if face_zone_status:
                             show_zone(img, get_coords_from_text(row['face_zone_coords']))
@@ -362,12 +378,12 @@ class ParseThread(QThread):
                     except:
                         print('Problem with: ', image_name, cam_name)
                         continue
-                count_progress = self.main_window.progressBar.value() + 1
+                count_progress = file_idx + 1
                 self.progress_bar_process.emit(count_progress)
 
         ip_cam_data_paths_dict = self.main_window.ip_cam_data_paths_dict
         cam_names = self.main_window.cam_names
-        cam_name = self.main_window.le_cam_name.text()
+        cam_name = self.cam_name
         date_start = self.main_window.date_start
         date_end = self.main_window.date_end
         text_wait = self.main_window.text_wait
@@ -390,8 +406,7 @@ class ParseThread(QThread):
                     self.output_message.emit(self.main_window.text_error_bad_range)
                 else:
                     self.enable_disable_ui.emit(False)
-                    self.main_window.pb_choose_cam.setEnabled(False)
-                    self.main_window.le_cam_name.setEnabled(False)
+                    self.cam_choose_enable.emit(False)
 
                     # self.output_message.emit(text_wait)
 
@@ -401,29 +416,29 @@ class ParseThread(QThread):
 
                     total_df = dt_slice_shape_df(df_cam, date_start, date_end)
 
-                    if self.main_window.cb_general_det_aria.isChecked():
+                    if self.cb_general_det_aria:
                         total_df = total_df[total_df['shape_zone'] == 1]
 
-                        if self.main_window.cb_more_then_two.isChecked():
+                        if self.cb_more_then_two:
                             total_df = total_df[total_df.duplicated(subset='origin_file_name', keep=False)]
-                            if self.main_window.cb_at_cash_register.isChecked():
+                            if self.cb_at_cash_register:
                                 total_df = total_df[total_df['face_zone'] == 1]
 
-                        if not self.main_window.cb_more_then_two.isChecked():
-                            if self.main_window.cb_at_cash_register.isChecked():
+                        if not self.cb_more_then_two:
+                            if self.cb_at_cash_register:
                                 total_df = total_df[total_df['face_zone'] == 1]
                     else:
-                        if self.main_window.cb_more_then_two.isChecked():
+                        if self.cb_more_then_two:
                             total_df = total_df[total_df.duplicated(subset='origin_file_name', keep=False)]
-                            if self.main_window.cb_at_cash_register.isChecked():
+                            if self.cb_at_cash_register:
                                 total_df = total_df[total_df['face_zone'] == 1]
 
-                        if not self.main_window.cb_more_then_two.isChecked():
-                            if self.main_window.cb_at_cash_register.isChecked():
+                        if not self.cb_more_then_two:
+                            if self.cb_at_cash_register:
                                 total_df = total_df[total_df['face_zone'] == 1]
 
-                    if self.main_window.cb_certain_zone.isChecked():
-                        zone_coords = self.main_window.le_certain_zone.text()
+                    if self.cb_certain_zone:
+                        zone_coords = self.le_certain_zone
                         total_df = zone_intersections(total_df, zone_coords)
 
                     if os.path.exists(os.path.join(os.getcwd(), r'imgs_cvdb')):
@@ -432,13 +447,12 @@ class ParseThread(QThread):
                     else:
                         os.mkdir(os.path.join(os.getcwd(), r'imgs_cvdb'))
 
-                    rectangle_status = self.main_window.cb_shape_bbox.isChecked()
-                    shape_zone_status = self.main_window.cb_shape_zone.isChecked()
-                    face_zone_status = self.main_window.cb_face_zone.isChecked()
+                    rectangle_status = self.cb_shape_bbox
+                    shape_zone_status = self.cb_shape_zone
+                    face_zone_status = self.cb_face_zone
                     get_rectangled_images(total_df, rectangle_status, shape_zone_status, face_zone_status)
                     # self.output_message.emit(text_done)
-                    self.main_window.pb_choose_cam.setEnabled(True)
-                    self.main_window.le_cam_name.setEnabled(True)
+                    self.cam_choose_enable.emit(True)
                     self.enable_disable_ui.emit(True)
         self.finished.emit()
 
@@ -635,6 +649,10 @@ class UI(QDialog):
     def set_progress_bar_process(self, value_videos):
         self.progressBar.setValue(value_videos)
 
+    def set_cam_choose_enabled(self, signal):
+        self.pb_choose_cam.setEnabled(signal)
+        self.le_cam_name.setEnabled(signal)
+
     def run_ParseThread(self):
         self.thread_2 = QThread()
         self.worker_2 = ParseThread(main_window=self)
@@ -644,6 +662,7 @@ class UI(QDialog):
         self.worker_2.finished.connect(self.worker_2.deleteLater)
         self.thread_2.finished.connect(self.thread_2.deleteLater)
         self.worker_2.enable_disable_ui.connect(self.disable_enable_ui)
+        self.worker_2.cam_choose_enable.connect(self.set_cam_choose_enabled)
         self.worker_2.progress_bar_start.connect(self.set_progress_bar_start)
         self.worker_2.progress_bar_process.connect(self.set_progress_bar_process)
         self.worker_2.total_num_message.connect(self.sending_total_num_message)

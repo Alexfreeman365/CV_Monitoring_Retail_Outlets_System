@@ -47,7 +47,12 @@ class EstimateThread(QThread):
         super(EstimateThread, self).__init__(parent)
         self.main_window = main_window
         self.ip = self.main_window.ip
-        self.lineEdit_cam_name = self.main_window.lineEdit_cam_name
+        self.cam_name = self.main_window.lineEdit_cam_name.text()
+        self.rb_images = self.main_window.radioButton_images.isChecked()
+        self.rb_plan = self.main_window.radioButton_plan.isChecked()
+        self.rb_alarm = self.main_window.radioButton_alarm.isChecked()
+        self.rb_str = self.main_window.radioButton_str.isChecked()
+        self.rb_refresh = self.main_window.radioButton_refresh.isChecked()
         self.host_sd = self.main_window.host_sd
         self.day_start = self.main_window.day_start
         self.day_end = self.main_window.day_end
@@ -107,7 +112,7 @@ class EstimateThread(QThread):
         def time_condition_str(link):
             video_time_start = str(list(link)[0]).split('/')[4].split('_')[1]
             video_time_end = str(list(link)[0]).split('/')[4].split('_')[2].split('.')[0]
-            if self.main_window.radioButton_str.isChecked():
+            if self.rb_str:
                 time_condition = ((self.str_from <= video_time_start) & (video_time_end <= self.str_to))
             else:
                 time_condition = False
@@ -115,7 +120,7 @@ class EstimateThread(QThread):
 
         def image_time_condition_str(link):
             image_time = str(list(link)[0]).split('/')[4].split('.')[0][7:13]
-            if self.main_window.radioButton_str.isChecked():
+            if self.rb_str:
                 time_condition = ((self.str_from <= image_time) & (image_time <= self.str_to))
             else:
                 time_condition = False
@@ -132,24 +137,24 @@ class EstimateThread(QThread):
             return condition
 
         def get_last_pc_day():
-            if len(self.lineEdit_cam_name.text()) != 0:
-                ip = self.lineEdit_cam_name.text()
+            if len(self.cam_name) != 0:
+                ip = self.cam_name
             else:
                 ip = self.ip.replace(':', '_')
             image_last_pc_day = '0'
             video_last_pc_day = '0'
 
-            if self.main_window.radioButton_images.isChecked():
+            if self.rb_images:
                 image_path = os.path.join(self.output_dir, ip + '_photos')
                 if os.path.exists(image_path):
                     image_last_pc_day = (os.listdir(image_path) or ['0'])[-1]
 
-            if self.main_window.radioButton_plan.isChecked():
+            if self.rb_plan:
                 video_path = os.path.join(self.output_dir, ip + '_videos')
                 if os.path.exists(video_path):
                     video_last_pc_day = (os.listdir(video_path) or ['0'])[-1]
 
-            if self.main_window.radioButton_alarm.isChecked():
+            if self.rb_alarm:
                 video_path = os.path.join(self.output_dir, ip + '_videos')
                 if os.path.exists(video_path):
                     video_last_pc_day = (os.listdir(video_path) or ['0'])[-1]
@@ -165,14 +170,14 @@ class EstimateThread(QThread):
         def get_summary(image_day_start, video_day_start, image_day_end, video_day_end):
             self.progress_days_start.emit(len(self.days))
             # Pass through all days included in the selected range
-            for day in self.days:
+            for day_idx, day in enumerate(self.days):
 
                 # Defining folders for this day
                 day_folders = get_day_folders(self.host_sd, day)
                 day_video_folders = [folder for folder in day_folders if folder[0] == 'r']
                 day_image_folders = [folder for folder in day_folders if folder[0] == 'i']
 
-                if self.main_window.radioButton_images.isChecked():
+                if self.rb_images:
                     if image_day_start <= day <= image_day_end:
                         for folder in day_image_folders:
                             r = requests.get(self.host_sd + day + '/' + folder)
@@ -193,7 +198,7 @@ class EstimateThread(QThread):
                                     self.day_videos_size += float((''.join(list(link)[2])).replace('M', ''))
                             self.videos_num += len(folder_video_links)
 
-                if self.main_window.radioButton_plan.isChecked():
+                if self.rb_plan:
                     if video_day_start <= day <= video_day_end:
                         for folder in day_video_folders:
                             r = requests.get(self.host_sd + day + '/' + folder)
@@ -217,7 +222,7 @@ class EstimateThread(QThread):
                                     self.day_videos_size += float((''.join(list(link)[2])).replace('M', ''))
                             self.videos_num += len(folder_video_links)
 
-                if self.main_window.radioButton_alarm.isChecked():
+                if self.rb_alarm:
                     if video_day_start <= day <= video_day_end:
                         for folder in day_video_folders:
                             r = requests.get(self.host_sd + day + '/' + folder)
@@ -243,7 +248,7 @@ class EstimateThread(QThread):
                             self.videos_num += len(folder_video_links)
 
                 # Setting the progress bar execution sequence
-                value_days = self.main_window.progressBar_total.value() + 1
+                value_days = day_idx + 1
                 self.progress_days_process.emit(value_days)
             self.progress_days_process.emit(len(self.days))
             # Returns the number of videos and their size in the time range selected by the user
@@ -259,12 +264,12 @@ class EstimateThread(QThread):
             # Getting a list of existing days on the SD card
             self.days = get_days()
 
-            if self.main_window.radioButton_refresh.isChecked():
+            if self.rb_refresh:
                 image_day_start, video_day_start = get_last_pc_day()
                 image_day_end, video_day_end = self.days[-1], self.days[-1]
 
                 # Getting the number of days in the selected range by the user
-                if self.main_window.radioButton_images.isChecked():
+                if self.rb_images:
                     self.range_days_num = self.days.index(image_day_end) - self.days.index(image_day_start) + 1
                 else:
                     self.range_days_num = self.days.index(video_day_end) - self.days.index(video_day_start) + 1
@@ -291,7 +296,7 @@ class EstimateThread(QThread):
             self.enable_disable_ui.emit(True)
         except:
             self.enable_disable_ui.emit(True)
-            log_event(cwd_path, get_app_name(), self.lineEdit_cam_name.text(), traceback.format_exc())
+            log_event(cwd_path, get_app_name(), self.cam_name, traceback.format_exc())
             text_error = '<FONT COLOR=#f4320c>Проблемы с оценкой. ' \
                          'Попробуйте проверить ваш промежуток времени.</FONT>'
             self.message.emit(text_error)
@@ -327,11 +332,16 @@ class ParseThread(QThread):
         self.days = []
         self.image_links_dict = {}
         self.video_links_dict = {}
-        self.lineEdit_cam_name = self.main_window.lineEdit_cam_name
-        self.lineEdit_token = self.main_window.lineEdit_token
-        self.lineEdit_chat_id = self.main_window.lineEdit_chat_id
-        self.TOKEN = self.lineEdit_token.text()
-        self.chat_id = (self.lineEdit_chat_id.text())
+        self.cam_name = self.main_window.lineEdit_cam_name.text()
+        self.TOKEN = self.main_window.lineEdit_token.text()
+        self.chat_id = self.main_window.lineEdit_chat_id.text()
+        self.rb_images = self.main_window.radioButton_images.isChecked()
+        self.rb_plan = self.main_window.radioButton_plan.isChecked()
+        self.rb_alarm = self.main_window.radioButton_alarm.isChecked()
+        self.rb_str = self.main_window.radioButton_str.isChecked()
+        self.rb_refresh = self.main_window.radioButton_refresh.isChecked()
+        self.rb_auto = self.main_window.radioButton_auto.isChecked()
+        self._stop = False
         if self.TOKEN:
             self.bot = telebot.TeleBot(self.TOKEN, parse_mode=None)
         self.max_retries = 100  # Maximum number of reconnection attempts
@@ -365,7 +375,7 @@ class ParseThread(QThread):
 
         def time_condition_str(link):
             video_time = link['href'].split('/')[4].split('.')[0].split('_')
-            if self.main_window.radioButton_str.isChecked():
+            if self.rb_str:
                 time_condition = ((self.str_from <= video_time[1]) & (video_time[2] <= self.str_to))
             else:
                 time_condition = False
@@ -373,7 +383,7 @@ class ParseThread(QThread):
 
         def image_time_condition_str(link):
             image_time = link['href'].split('/')[4].split('.')[0][7:13]
-            if self.main_window.radioButton_str.isChecked():
+            if self.rb_str:
                 time_condition = ((self.str_from <= image_time) & (image_time <= self.str_to))
             else:
                 time_condition = False
@@ -390,24 +400,24 @@ class ParseThread(QThread):
             return condition
 
         def get_last_pc_day():
-            if len(self.lineEdit_cam_name.text()) != 0:
-                ip = self.lineEdit_cam_name.text()
+            if len(self.cam_name) != 0:
+                ip = self.cam_name
             else:
                 ip = self.ip.replace(':', '_')
             image_last_pc_day = '0'
             video_last_pc_day = '0'
 
-            if self.main_window.radioButton_images.isChecked():
+            if self.rb_images:
                 image_path = os.path.join(self.output_dir, ip + '_photos')
                 if os.path.exists(image_path):
                     image_last_pc_day = (os.listdir(image_path) or ['0'])[-1]
 
-            if self.main_window.radioButton_plan.isChecked():
+            if self.rb_plan:
                 video_path = os.path.join(self.output_dir, ip + '_videos')
                 if os.path.exists(video_path):
                     video_last_pc_day = (os.listdir(video_path) or ['0'])[-1]
 
-            if self.main_window.radioButton_alarm.isChecked():
+            if self.rb_alarm:
                 video_path = os.path.join(self.output_dir, ip + '_videos')
                 if os.path.exists(video_path):
                     video_last_pc_day = (os.listdir(video_path) or ['0'])[-1]
@@ -429,7 +439,7 @@ class ParseThread(QThread):
                 day_image_links = []
                 day_video_links = []
 
-                if self.main_window.radioButton_images.isChecked():
+                if self.rb_images:
                     if image_day_start <= day <= image_day_end:
                         day_folders = get_day_folders(self.host_sd, day)
                         day_image_folders = [folder for folder in day_folders if folder[0] == 'i']
@@ -444,7 +454,7 @@ class ParseThread(QThread):
                         if len(day_image_links) > 0:
                             self.image_links_dict[day] = day_image_links
 
-                if self.main_window.radioButton_plan.isChecked():
+                if self.rb_plan:
                     if video_day_start <= day <= video_day_end:
                         day_folders = get_day_folders(self.host_sd, day)
                         day_video_folders = [folder for folder in day_folders if folder[0] == 'r']
@@ -460,7 +470,7 @@ class ParseThread(QThread):
                         if len(day_video_links) > 0:
                             self.video_links_dict[day] = day_video_links
 
-                if self.main_window.radioButton_alarm.isChecked():
+                if self.rb_alarm:
                     if video_day_start <= day <= video_day_end:
                         day_folders = get_day_folders(self.host_sd, day)
                         day_video_folders = [folder for folder in day_folders if folder[0] == 'r']
@@ -479,14 +489,14 @@ class ParseThread(QThread):
             return self.image_links_dict, self.video_links_dict
 
         def get_last_day_filenames():
-            if len(self.lineEdit_cam_name.text()) != 0:
-                ip = self.lineEdit_cam_name.text()
+            if len(self.cam_name) != 0:
+                ip = self.cam_name
             else:
                 ip = self.ip.replace(':', '_')
             image_last_pc_day_filenames = []
             video_last_pc_day_filenames = []
 
-            if self.main_window.radioButton_images.isChecked():
+            if self.rb_images:
                 image_path = os.path.join(self.output_dir, ip + '_photos')
                 if os.path.exists(image_path):
                     try:
@@ -496,7 +506,7 @@ class ParseThread(QThread):
                     except:
                         pass
 
-            if self.main_window.radioButton_plan.isChecked():
+            if self.rb_plan:
                 video_path = os.path.join(self.output_dir, ip + '_videos')
                 if os.path.exists(video_path):
                     try:
@@ -506,7 +516,7 @@ class ParseThread(QThread):
                     except:
                         pass
 
-            if self.main_window.radioButton_alarm.isChecked():
+            if self.rb_alarm:
                 video_path = os.path.join(self.output_dir, ip + '_videos')
                 if os.path.exists(video_path):
                     try:
@@ -522,37 +532,37 @@ class ParseThread(QThread):
         # from the previous function with the creation of a file structure.
         def download_series(links_dict_):
             # Creating a folder with the name of the camera's IP address.
-            if len(self.lineEdit_cam_name.text()) != 0:
-                ip = self.lineEdit_cam_name.text()
+            if len(self.cam_name) != 0:
+                ip = self.cam_name
             else:
                 ip = self.ip.replace(':', '_')
 
             if links_dict_ == self.image_links_dict:
                 file_type = '_photos'
-                if os.path.exists(self.main_window.output_dir + ip + file_type):
+                if os.path.exists(self.output_dir + ip + file_type):
                     pass
                 else:
                     if len(self.image_links_dict) != 0:
-                        os.mkdir(self.main_window.output_dir + ip + file_type)
+                        os.mkdir(self.output_dir + ip + file_type)
             else:
                 file_type = '_videos'
-                if os.path.exists(self.main_window.output_dir + ip + file_type):
+                if os.path.exists(self.output_dir + ip + file_type):
                     pass
                 else:
                     if len(self.video_links_dict) != 0:
-                        os.mkdir(self.main_window.output_dir + ip + file_type)
+                        os.mkdir(self.output_dir + ip + file_type)
 
             image_last_pc_day_filenames, video_last_pc_day_filenames = get_last_day_filenames()
 
             # A passage for each day from the dictionary to get links to the video
             self.progress_days_start.emit(len(links_dict_))
             self.progress_videos_start.emit(10)
-            for day in links_dict_.keys():
+            for day_idx, day in enumerate(links_dict_.keys()):
                 # Creating a folder with the name of the day.
-                if os.path.exists(os.path.join(self.main_window.output_dir, ip + file_type, day)):
+                if os.path.exists(os.path.join(self.output_dir, ip + file_type, day)):
                     pass  # shutil.rmtree(self.output_dir + day)
                 else:
-                    os.mkdir(os.path.join(self.main_window.output_dir, ip + file_type, day))
+                    os.mkdir(os.path.join(self.output_dir, ip + file_type, day))
 
                 # Getting a list of links for the current day
                 links = links_dict_[day]
@@ -560,7 +570,7 @@ class ParseThread(QThread):
                 # setting the initial state of the progress bar for the videos
                 self.progress_videos_start.emit(len(links))
                 # Getting each link from the list
-                for link in links:
+                for link_idx, link in enumerate(links):
                     # Getting a title for a future video
                     file_line = link.split('/')[-1]
                     # Moving the video status to the end of the title for
@@ -574,7 +584,7 @@ class ParseThread(QThread):
                             # Create response object
                             r = requests.get(link, stream=True)
                             # Creating a directory and downloading videos to it in 1024*1024 chunks
-                            with open(os.path.join(self.main_window.output_dir, ip + file_type, day, file_name),
+                            with open(os.path.join(self.output_dir, ip + file_type, day, file_name),
                                       'wb') as f:
                                 for chunk in r.iter_content(chunk_size=1024 * 1024):
                                     if chunk:
@@ -585,16 +595,16 @@ class ParseThread(QThread):
                             # Create response object
                             r = requests.get(link, stream=True)
                             # Creating a directory and downloading videos to it in 1024*1024 chunks
-                            with open(os.path.join(self.main_window.output_dir, ip + file_type, day, file_name),
+                            with open(os.path.join(self.output_dir, ip + file_type, day, file_name),
                                       'wb') as f:
                                 for chunk in r.iter_content(chunk_size=1024 * 1024):
                                     if chunk:
                                         f.write(chunk)
                     # Updating the progress bar for videos
-                    count_progress = self.main_window.progressBar_videos.value() + 1
+                    count_progress = link_idx + 1
                     self.progress_videos_process.emit(count_progress)
                 # Updating the progress bar for days
-                value_days = self.main_window.progressBar_days.value() + 1
+                value_days = day_idx + 1
                 self.progress_days_process.emit(value_days)
 
             # Improving the user interface.
@@ -612,7 +622,7 @@ class ParseThread(QThread):
                     download_series(links_dict_)
                     return True
                 except Exception as e:
-                    log_event(cwd_path, self.app_name, self.lineEdit_cam_name.text(),
+                    log_event(cwd_path, self.app_name, self.cam_name,
                               f'Error: {e}. Reconnect attempt: {attempt}')
                     if attempt < self.max_retries - 1:
                         time.sleep(5)  # Pause before trying again
@@ -631,11 +641,11 @@ class ParseThread(QThread):
             # Getting a list of existing days on the SD card
             self.days = get_days()
 
-            if self.main_window.radioButton_refresh.isChecked():
+            if self.rb_refresh:
                 image_day_start, video_day_start = get_last_pc_day()
                 image_day_end, video_day_end = self.days[-1], self.days[-1]
 
-                if self.main_window.radioButton_images.isChecked():
+                if self.rb_images:
                     range_days_num = self.days.index(image_day_end) - self.days.index(image_day_start) + 1
                 else:
                     range_days_num = self.days.index(video_day_end) - self.days.index(video_day_start) + 1
@@ -659,16 +669,16 @@ class ParseThread(QThread):
             self.enable_disable_ui.emit(True)
         except:
             self.enable_disable_ui.emit(True)
-            log_event(cwd_path, self.app_name, self.lineEdit_cam_name.text(), traceback.format_exc())
+            log_event(cwd_path, self.app_name, self.cam_name, traceback.format_exc())
             text_error = '<FONT COLOR=#f4320c>Проблемы со скачиванием. ' \
                          'Попробуйте проверить ваш промежуток времени.</FONT>'
             self.message.emit(text_error)
 
-        if self.main_window.radioButton_auto.isChecked():
+        if self.rb_auto:
             self.ftr_from = self.main_window.ftr_from
             self.ftr_to = self.main_window.ftr_to
             first_time_bot_notification = 0
-            while self.main_window.radioButton_auto.isChecked():
+            while not self._stop:
                 try:
                     # Disable UI to prevent unauthorized actions
                     self.enable_disable_ui.emit(False)
@@ -681,7 +691,7 @@ class ParseThread(QThread):
                     image_day_start, video_day_start = get_last_pc_day()
                     image_day_end, video_day_end = self.days[-1], self.days[-1]
 
-                    if self.main_window.radioButton_images.isChecked():
+                    if self.rb_images:
                         range_days_num = (self.days.index(image_day_end) -
                                           self.days.index(image_day_start) + 1)
                     else:
@@ -711,8 +721,8 @@ class ParseThread(QThread):
                     self.message.emit(text_error)
                     if first_time_bot_notification == 0:
                         try:
-                            if len(self.lineEdit_cam_name.text()) != 0:
-                                ip = self.lineEdit_cam_name.text()
+                            if len(self.cam_name) != 0:
+                                ip = self.cam_name
                             else:
                                 ip = self.ip.replace(':', '_')
                             if self.TOKEN:
@@ -755,9 +765,7 @@ class GetDays(QThread):
         self.host = self.main_window.host
         self.days = []
         self.app_name = get_app_name()
-        self.lineEdit_cam_name = self.main_window.lineEdit_cam_name
-        self.lineEdit_token = self.main_window.lineEdit_token
-        self.lineEdit_chat_id = self.main_window.lineEdit_chat_id
+        self.cam_name = self.main_window.lineEdit_cam_name.text()
 
     def run(self):
         # Function for connecting to the camera and parsing the SD card
@@ -785,7 +793,7 @@ class GetDays(QThread):
             self.days_message.emit(self.days)
             self.enable_disable_ui.emit(True)
         except Exception as e:
-            log_event(cwd_path, self.app_name, self.lineEdit_cam_name.text(), traceback.format_exc())
+            log_event(cwd_path, self.app_name, self.cam_name, traceback.format_exc())
             self.start_enable_ui.emit(True)
             text_error = '<FONT COLOR=#f4320c>Ошибка</FONT>'
             self.status_message.emit(text_error)
@@ -927,6 +935,17 @@ class UI(QDialog):
         self.worker_3.days_message.connect(self.sending_message_days)
         self.thread_3.start()
 
+    def stop_auto_thread(self):
+        # Stop the auto-download worker before launching another thread
+        # to avoid two threads touching the GUI simultaneously.
+        if self.worker_2 is not None:
+            self.worker_2._stop = True
+            try:
+                if self.thread_2 is not None and self.thread_2.isRunning():
+                    self.thread_2.wait(5000)
+            except RuntimeError:
+                pass
+
     # A slot for a button that connects to the camera and parses its SD card.
     # This is a fast task, so it is executed in the main thread.
     def button_days_clicked(self):
@@ -939,6 +958,7 @@ class UI(QDialog):
         self.progressBar_days.setValue(0)
         self.progressBar_videos.setValue(0)
         self.label_out.setText('')
+        self.stop_auto_thread()
         self.run_GetDays()
 
     def button_days_list_clicked(self):
@@ -1005,6 +1025,8 @@ class UI(QDialog):
             self.lineEdit_ftr_from_min.setEnabled(True)
             self.lineEdit_ftr_to.setEnabled(True)
             self.lineEdit_ftr_to_min.setEnabled(True)
+            if self.worker_2 is not None:
+                self.worker_2._stop = True
 
     def disable_enable_ui(self, signal):
         self.pushButton_save_settings.setEnabled(signal)
@@ -1147,6 +1169,7 @@ class UI(QDialog):
         self.progressBar_days.setValue(0)
         self.progressBar_videos.setValue(0)
         self.label_out.setText('')
+        self.stop_auto_thread()
         self.run_EstimateThread()
 
     # The following 5 functions belong to the second working thread to videos downloading
@@ -1202,6 +1225,7 @@ class UI(QDialog):
                          self.check_hour_input(self.lineEdit_str_from_min.text()) + '00')
         self.str_to = (self.check_hour_input(self.lineEdit_str_to.text()) +
                        self.check_hour_input(self.lineEdit_str_to_min.text()) + '00')
+        self.stop_auto_thread()
         self.run_ParseThread()
 
     # Feedback button

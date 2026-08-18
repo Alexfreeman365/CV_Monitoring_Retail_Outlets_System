@@ -76,11 +76,14 @@ class EstimateThread(QThread):
     def __init__(self, main_window, parent=None):
         super(EstimateThread, self).__init__(parent)
         self.main_window = main_window
+        self.cam_name = self.main_window.le_cam_name.text()
+        self.cutoff_day = self.main_window.le_cutoff_day.text()
+        self.text_data_error = self.main_window.text_data_error
 
     def run(self):
         try:
-            cam_name = self.main_window.le_cam_name.text()
-            cutoff_day = self.main_window.le_cutoff_day.text()
+            cam_name = self.cam_name
+            cutoff_day = self.cutoff_day
             cam_shapes = db.read_shapes(cam_name, os.getcwd())
             cam_shapes = cam_shapes.sort_values('uid8')
             cam_shapes = cam_shapes.reset_index(drop=True)
@@ -105,7 +108,7 @@ class EstimateThread(QThread):
             self.len_arc.emit(len_arc)
             self.finished.emit()
         except:
-            self.output_message.emit(self.main_window.text_data_error)
+            self.output_message.emit(self.text_data_error)
             self.finished.emit()
 
 
@@ -116,11 +119,15 @@ class LetsArchiveThread(QThread):
     def __init__(self, main_window, parent=None):
         super(LetsArchiveThread, self).__init__(parent)
         self.main_window = main_window
+        self.cam_name = self.main_window.le_cam_name.text()
+        self.cutoff_day = self.main_window.le_cutoff_day.text()
+        self.text_done = self.main_window.text_done
+        self.text_data_error = self.main_window.text_data_error
 
     def run(self):
         try:
-            cam_name = self.main_window.le_cam_name.text()
-            cutoff_day = self.main_window.le_cutoff_day.text()
+            cam_name = self.cam_name
+            cutoff_day = self.cutoff_day
             cam_shapes = db.read_shapes(cam_name, os.getcwd())
             cam_shapes = cam_shapes.sort_values('uid8')
             cam_shapes = cam_shapes.reset_index(drop=True)
@@ -151,10 +158,10 @@ class LetsArchiveThread(QThread):
 
             archive_shapes.to_csv(os.path.join(arc_folder_path, f'{cam_name}_shapes_locs.csv'), index=False)
             db.write_shapes(cam_name, remaining_shapes, os.getcwd(), mode='replace')
-            self.output_message.emit(self.main_window.text_done)
+            self.output_message.emit(self.text_done)
             self.finished.emit()
         except:
-            self.output_message.emit(self.main_window.text_data_error)
+            self.output_message.emit(self.text_data_error)
             self.finished.emit()
 
 
