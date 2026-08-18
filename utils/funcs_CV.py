@@ -201,7 +201,8 @@ def change_past_process(cam_name, day, cwd_path, df_new):
 
 
 def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_name,
-                    cam_names, change_past=None, cwd_path=os.getcwd()):
+                    cam_names, change_past=None, only_day=None, skip_vis_count=False,
+                    cwd_path=os.getcwd()):
     last_seen_day = None
     last_day_processed_imgs = []
 
@@ -215,7 +216,7 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_n
 
         for day in os.listdir(images_path):
             day_cam_imgs = []
-            if day[2:] >= last_seen_day:
+            if day[2:] >= last_seen_day and (only_day is None or day[2:] == only_day):
                 for file_name in os.listdir(os.path.join(images_path, day)):
                     if get_first_part(file_name) != 'Thumbs':
                         day_cam_imgs.append(file_name)
@@ -252,7 +253,7 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_n
 
         last_day = day[2:]
 
-        if (change_past is None and last_seen_day != last_day and
+        if (change_past is None and not skip_vis_count and last_seen_day != last_day and
                 (not cam_name[-1].isdigit() or cam_name[-1] == '1') and
                 db.shapes_exist(cam_name, cwd_path)):
             vis_count_noseller_pipeline(cam_name, images_path, cwd_path)
