@@ -73,7 +73,7 @@ python -m PyInstaller --onefile -w `
 --clean --runtime-tmpdir=hi_temp `
 "$pwd/01_hiFTPDloader_v3.py"
 
-pyinstaller --onefile -w `
+python -m PyInstaller --onefile -w `
 --exclude-module matplotlib `
 --exclude-module numpy `
 --exclude-module pandas `
@@ -118,7 +118,7 @@ pyinstaller --onefile -w `
 --clean --runtime-tmpdir=hi_temp `
 "$pwd/02_hiFTPCleaner_v3.py"
 
-pyinstaller --onefile -w `
+python -m PyInstaller --onefile -w `
 --exclude-module matplotlib `
 --exclude-module numpy `
 --exclude-module pandas `
@@ -163,7 +163,7 @@ pyinstaller --onefile -w `
 --clean --runtime-tmpdir=hi_temp `
 "$pwd/03_CVloadAntifreeze_v2.py"
 
-pyinstaller --onefile -w `
+python -m PyInstaller --onefile -w `
 --exclude-module torch `
 --exclude-module torchaudio `
 --exclude-module torchvision `
@@ -205,7 +205,7 @@ pyinstaller --onefile -w `
 --clean --runtime-tmpdir=hi_temp `
 "$pwd/04_CVdbViewer_v2.py"
 
-pyinstaller --onefile -w `
+python -m PyInstaller --onefile -w `
 --exclude-module altgraph `
 --exclude-module beautifulsoup4 `
 --exclude-module contourpy `
@@ -254,7 +254,7 @@ pyinstaller --onefile -w `
 --clean --runtime-tmpdir=hi_temp `
 "$pwd/05_CVsetCam_v2.py"
 
-pyinstaller --onefile -w `
+python -m PyInstaller --onefile -w `
 --exclude-module numpy `
 --exclude-module pandas `
 --exclude-module torch `
@@ -306,7 +306,7 @@ pyinstaller --onefile -w `
 --clean --runtime-tmpdir=hi_temp `
 "$pwd/06_MissingPhotoFinder_v1.py"
 
-pyinstaller --onefile -w `
+python -m PyInstaller --onefile -w `
 --exclude-module altgraph `
 --exclude-module beautifulsoup4 `
 --exclude-module contourpy `
@@ -356,7 +356,7 @@ pyinstaller --onefile -w `
 --clean --runtime-tmpdir=hi_temp `
 "$pwd/07_SysViscountEval_v1.py"
 
-pyinstaller --onefile -w `
+python -m PyInstaller --onefile -w `
 --exclude-module altgraph `
 --exclude-module beautifulsoup4 `
 --exclude-module certifi `
@@ -414,7 +414,7 @@ pyinstaller --onefile -w `
 --clean --runtime-tmpdir=hi_temp `
 "$pwd/08_CVdbArchivator_v2.py"
 
-pyinstaller --onefile -w `
+python -m PyInstaller --onefile -w `
 --exclude-module numpy `
 --exclude-module pandas `
 --exclude-module torch `
@@ -452,7 +452,7 @@ pyinstaller --onefile -w `
 --clean --runtime-tmpdir=hi_temp `
 "$pwd/09_CVdbUpdater_v2.py"
 
-pyinstaller --onefile -w `
+python -m PyInstaller --onefile -w `
 --exclude-module numpy `
 --exclude-module pandas `
 --add-data "$pwd/ui;ui" `
