@@ -2,6 +2,7 @@
 .git/
 .idea/
 .venv/
+.venv-forecast/
 .venv-linux/
 archive/
 bin/

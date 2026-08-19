@@ -361,6 +361,12 @@ def vis_count_noseller_pipeline(cam_name, ip_cam_data_path, cwd_path=os.getcwd()
 
         db.export_dashboard_csv(cwd_path)
 
+        # Weekly visitor forecast: cheap in-process gate, then launch the
+        # dedicated forecast venv (subprocess) only when a full week closed.
+        from utils.funcs_visitor_forecast import should_run_forecast, launch_visitor_forecast
+        if should_run_forecast(cwd_path):
+            launch_visitor_forecast(cwd_path)
+
 
 def update_visitors(cam_name, date_start, date_end, cwd_path):
     if not cam_name[-1].isdigit() or cam_name[-1] == '1':

@@ -85,6 +85,14 @@ CREATE TABLE IF NOT EXISTS real_viscount (
     count    INTEGER NOT NULL,
     PRIMARY KEY (cam_name, date, hour)
 );
+CREATE TABLE IF NOT EXISTS visitor_forecast (
+    cam_name TEXT NOT NULL,          -- short name of the main camera (shop)
+    date     TEXT NOT NULL,          -- ISO Monday (week start)
+    pred     INTEGER NOT NULL,       -- predicted weekly visitors
+    real     INTEGER NOT NULL,       -- actual weekly visitors (0 = no data / future)
+    mape     INTEGER NOT NULL,       -- sMAPE x 10000 (0 = no data, 1 = ~perfect)
+    PRIMARY KEY (cam_name, date)
+);
 CREATE TABLE IF NOT EXISTS shapes_locs (
     cam_name          TEXT NOT NULL,
     origin_file_name  TEXT NOT NULL,
@@ -523,3 +531,109 @@ def write_real_viscount(cam_name, df, cwd_path=os.getcwd(), mode='replace'):
     conn.executemany('INSERT OR REPLACE INTO real_viscount VALUES (?,?,?,?)', rows)
     conn.commit()
     conn.close()
+
+
+# --- visitor_forecast ---
+
+def _forecast_mape_to_int(value):
+    """sMAPE to int (x 10000). Accepts CSV string ('0,12'/'0,0001'/'0'/'0,0') or int."""
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        s = value.strip()
+        if s in ('', '0', '0,0'):
+            return 0
+        return int(round(float(s.replace(',', '.')) * 10000))
+    return int(value)
+
+
+def _forecast_mape_to_str(value):
+    """int sMAPE (x 10000) back to CSV string ('0,12'/'0,0001'/'0')."""
+    if value is None or value == 0:
+        return '0'
+    if value == 1:
+        return '0,0001'
+    return str(value / 10000).replace('.', ',')
+
+
+def read_visitor_forecast_all(cwd_path=os.getcwd()):
+    """Wide forecast DataFrame: date + {cam}_pred/{cam}_real/{cam}_mape (int mape)."""
+    import pandas as pd
+    conn = _connect(cwd_path)
+    try:
+        df = pd.read_sql_query(
+            'SELECT cam_name, date, pred, real, mape FROM visitor_forecast', conn)
+    except sqlite3.OperationalError:
+        df = pd.DataFrame(columns=['cam_name', 'date', 'pred', 'real', 'mape'])
+    conn.close()
+    if df.empty:
+        return pd.DataFrame(columns=['date'])
+
+    cams = sorted(df['cam_name'].unique())
+    parts = []
+    for c in cams:
+        sub = df[df['cam_name'] == c][['date', 'pred', 'real', 'mape']].copy()
+        sub = sub.rename(columns={'pred': f'{c}_pred', 'real': f'{c}_real', 'mape': f'{c}_mape'})
+        parts.append(sub)
+    wide = parts[0]
+    for sub in parts[1:]:
+        wide = wide.merge(sub, on='date', how='outer')
+    wide['date'] = pd.to_datetime(wide['date'])
+    cols = ['date'] + [f'{c}_{k}' for c in cams for k in ('pred', 'real', 'mape')]
+    return wide.sort_values('date').reset_index(drop=True)[cols]
+
+
+def write_visitor_forecast_all(df, cwd_path=os.getcwd()):
+    """Write a wide forecast DataFrame (date + {cam}_pred/_real/_mape) to long format."""
+    import pandas as pd
+    init_db(cwd_path)
+    conn = _connect(cwd_path)
+    conn.execute('DELETE FROM visitor_forecast')
+    if df.empty:
+        conn.commit()
+        conn.close()
+        return
+
+    cams = sorted({c.rsplit('_', 1)[0] for c in df.columns if c.endswith('_pred')})
+    rows = []
+    for _, r in df.iterrows():
+        date = pd.to_datetime(r['date']).strftime('%Y-%m-%d')
+        for c in cams:
+            pred = int(r[f'{c}_pred']) if pd.notna(r.get(f'{c}_pred')) else 0
+            real = int(r[f'{c}_real']) if pd.notna(r.get(f'{c}_real')) else 0
+            mape = _forecast_mape_to_int(r.get(f'{c}_mape'))
+            rows.append((c, date, pred, real, mape))
+    conn.executemany('INSERT INTO visitor_forecast VALUES (?,?,?,?,?)', rows)
+    conn.commit()
+    conn.close()
+
+
+def export_forecast_csv(cwd_path=os.getcwd()):
+    """Mirror visitor_forecast to legacy CSV (dashboard link), mape as '0,12' strings."""
+    import pandas as pd
+    wide = read_visitor_forecast_all(cwd_path)
+    if wide.empty:
+        return
+    for col in wide.columns:
+        if col.endswith('_mape'):
+            wide[col] = wide[col].apply(_forecast_mape_to_str)
+    wide.to_csv(os.path.join(cwd_path, 'db', 'visitor_forecast.csv'), index=False)
+
+
+def read_visitors_daily(cam_name, cwd_path=os.getcwd()):
+    """Daily visitor sums as Prophet-ready DataFrame (ds=datetime, y=int)."""
+    import pandas as pd
+    conn = _connect(cwd_path)
+    try:
+        df = pd.read_sql_query(
+            'SELECT date AS ds, SUM(count) AS y FROM visitors '
+            'WHERE cam_name = ? GROUP BY date ORDER BY date',
+            conn, params=(cam_name,))
+    except sqlite3.OperationalError:
+        df = pd.DataFrame(columns=['ds', 'y'])
+    conn.close()
+    if df.empty:
+        return pd.DataFrame(columns=['ds', 'y'])
+    df['ds'] = pd.to_datetime(df['ds'])
+    df['y'] = df['y'].astype(int)
+    return df[['ds', 'y']]

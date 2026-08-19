@@ -71,6 +71,13 @@ def migrate(cwd_path):
             print('real_viscount:', sheet, len(df), 'days')
         xls.close()
 
+    # Visitor forecast (wide CSV: date + {cam}_pred/_real/_mape, N shops).
+    forecast_csv = os.path.join(db_dir, 'visitor_forecast_actual.csv')
+    if os.path.exists(forecast_csv):
+        df = pd.read_csv(forecast_csv)
+        db.write_visitor_forecast_all(df, cwd_path)
+        print('visitor_forecast:', len(df), 'weeks')
+
     print('Migration done ->', db.db_path(cwd_path))
 
 
