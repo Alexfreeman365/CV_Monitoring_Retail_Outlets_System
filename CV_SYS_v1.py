@@ -29,7 +29,7 @@ def _launch_helper(cwd_path, loc_path, name_substr):
     return None
 
 
-def start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=True):
+def start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=False):
     loc_path = os.path.join(cwd_path, 'cams_media')
     process = []
     if hiFTPCleaner:
@@ -80,8 +80,8 @@ if __name__ == '__main__':
         log_event(cwd_path, app_name, 'sys', 'First run: camera config initialized. Configure cameras (work_hours, zones) and restart.')
         print('First run: camera config initialized. Configure cameras (work_hours, zones), then restart.')
         sys.exit(0)
-    # process = start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=False) #1
-    # time.sleep(60 * 30) #2
+    process = start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=False) #1
+    time.sleep(60 * 5) #2 The time needed to load all unseen media
 
     try:
         model_path = os.path.join(cwd_path, MODEL_REL_PATH)
@@ -102,7 +102,7 @@ if __name__ == '__main__':
                     time.sleep(5)
         except Exception as error:
             log_event(cwd_path, app_name, 'error', type(error).__name__)
-            # terminate_hiFTPCleaner_CVloadAntifreeze(process) #3
+            terminate_hiFTPCleaner_CVloadAntifreeze(process) #3
             # bot.send_message(chat_id, 'CV_SYS >>> Ошибка в основном pipeline')
             raise error
 
@@ -118,6 +118,6 @@ if __name__ == '__main__':
         backup_db(cwd_path)
 
         log_event(cwd_path, app_name, 'sys', 'Stopping the system')
-        # terminate_hiFTPCleaner_CVloadAntifreeze(process) #4
+        terminate_hiFTPCleaner_CVloadAntifreeze(process) #4
         cleanup_mei_folders(os.path.join(cwd_path, 'cams_media'))
 
