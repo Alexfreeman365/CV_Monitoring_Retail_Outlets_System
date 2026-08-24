@@ -52,6 +52,7 @@ def save_shape_db_info(cam_names, cwd_path=os.getcwd()):
         shape_db_info = db.build_shape_db_info(cam_names, cwd_path)
         if not shape_db_info.empty:
             db.write_shape_db_info(shape_db_info, cwd_path)
+            db.export_shape_db_info_csv(cwd_path)
 
 
 def get_first_part(i):

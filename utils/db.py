@@ -448,6 +448,13 @@ def write_shape_db_info(df, cwd_path=os.getcwd()):
     conn.close()
 
 
+def export_shape_db_info_csv(cwd_path=os.getcwd()):
+    """Mirror shape_db_info to legacy CSV (dashboard link) in db/."""
+    df = read_shape_db_info(cwd_path)
+    if not df.empty:
+        df.to_csv(os.path.join(cwd_path, 'db', 'shape_db_info.csv'), index=False)
+
+
 def build_shape_db_info(cam_names, cwd_path=os.getcwd()):
     """Build the shape_db_info DataFrame from the per-camera shapes tables."""
     import pandas as pd
