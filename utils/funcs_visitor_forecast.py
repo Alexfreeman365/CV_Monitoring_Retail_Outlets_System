@@ -179,6 +179,13 @@ def should_run_forecast(cwd_path=os.getcwd()):
 
 
 def _fit_prophet(hist_df):
+    import logging
+    # Suppress benign noise only (app logging stays intact):
+    # - prophet.plot logs an error when plotly is missing (we don't use it);
+    # - cmdstanpy INFO logs "Chain [1] start/done processing".
+    logging.getLogger('prophet.plot').setLevel(logging.CRITICAL)
+    logging.getLogger('cmdstanpy').setLevel(logging.WARNING)
+
     from prophet import Prophet  # lazy import: heavy, forecast venv only
     model = Prophet(
         growth='linear',
@@ -222,7 +229,7 @@ def run_visitor_forecast(cwd_path=os.getcwd()):
         true_df = get_true_df(cam_name, cwd_path, start_mon, border_mon)
 
         df = pred_df.set_index('ds').join(true_df.set_index('ds'), how='left')
-        weekly_df = df.resample('W-Mon', label='left', closed='left').sum().round().astype('int')
+        weekly_df = df.resample('W-MON', label='left', closed='left').sum().round().astype('int')
 
         pred_col, real_col, mape_col = f'{cam_name}_pred', f'{cam_name}_real', f'{cam_name}_mape'
         weekly_df.reset_index(inplace=True)
