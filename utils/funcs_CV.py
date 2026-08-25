@@ -265,20 +265,25 @@ def shape_detection(shape_detector, total_len_shapes_db, images_path: str, cam_n
             if (image_name not in last_day_processed_imgs
                     and get_first_part(image_name) != 'Thumbs'):
 
-                img_size = os.path.getsize(os.path.join(images_path, day, image_name))
-                if img_size == 0:
-                    time.sleep(2)
+                img_path = os.path.join(images_path, day, image_name)
 
-                try:
-                    # IMPORTANT: YOLO takes BGR (cv2.imread), no RGB conversion needed!
-                    img = cv2.imread(os.path.join(images_path, day, image_name))
-                except:
-                    print('Problem with: ', image_name, cam_name)
-                    if change_past is None and get_first_part(image_name) != 'Thumbs':
-                        last_day_processed_imgs.append(image_name)
+                # IMPORTANT: YOLO takes BGR (cv2.imread), no RGB conversion needed!
+                # cv2.imread returns None (does NOT raise) for zero-byte / corrupt / truncated files
+                img = cv2.imread(img_path)
+                if img is None:
+                    # zero-byte is likely a frame still downloading -> wait once and re-read
+                    if os.path.getsize(img_path) == 0:
+                        time.sleep(2)
+                        img = cv2.imread(img_path)
 
-                        log_event(cwd_path, 'CV_SYS', 'sys', 'Starting the system')
-                    continue
+                    if img is None:
+                        # unreadable frame -> skip it, do not crash the pipeline
+                        print(f'Unreadable image (skipped): {image_name} ({cam_name})')
+                        if change_past is None and get_first_part(image_name) != 'Thumbs':
+                            last_day_processed_imgs.append(image_name)
+                            log_event(cwd_path, 'CV_SYS', 'error',
+                                      f'Unreadable image: {image_name}')
+                        continue
 
                 results = shape_detector(img, verbose=False)  # verbose=False чтобы не выводить прогрес в консоль
 
