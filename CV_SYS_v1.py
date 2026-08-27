@@ -80,8 +80,11 @@ if __name__ == '__main__':
         log_event(cwd_path, app_name, 'sys', 'First run: camera config initialized. Configure cameras (work_hours, zones) and restart.')
         print('First run: camera config initialized. Configure cameras (work_hours, zones), then restart.')
         sys.exit(0)
-    process = start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=False) #1
-    time.sleep(60 * 5) #2 The time needed to load all unseen media
+
+    faste_mode = True
+    if not faste_mode:
+        process = start_hiFTPCleaner_CVloadAntifreeze(cwd_path, hiFTPCleaner=False) #1
+        time.sleep(60 * 5) #2 The time needed to load all unseen media
 
     try:
         model_path = os.path.join(cwd_path, MODEL_REL_PATH)
@@ -102,8 +105,11 @@ if __name__ == '__main__':
                     time.sleep(5)
         except Exception as error:
             log_event(cwd_path, app_name, 'error', type(error).__name__)
-            terminate_hiFTPCleaner_CVloadAntifreeze(process) #3
+
+            if not faste_mode:
+                terminate_hiFTPCleaner_CVloadAntifreeze(process) #3
             # bot.send_message(chat_id, 'CV_SYS >>> Ошибка в основном pipeline')
+
             raise error
 
     except KeyboardInterrupt:
@@ -111,13 +117,17 @@ if __name__ == '__main__':
             camconfig = load_camconfig(cwd_path)
             cam_set = [cam_set for cam_set in camconfig if cam_set['cam_name'] == cam_name][0]
             hour_end = cam_set['work_hours'].split(',')[1][1:-1]
+
             if (datetime.now()).strftime('%H') >= hour_end: # '0'
                 if not cam_name[-1].isdigit() or cam_name[-1] == '1':
                     vis_count_noseller_pipeline(cam_name, ip_cam_data_paths_dict[cam_name], cwd_path)
+
         save_shape_db_info(cam_names, cwd_path)
         backup_db(cwd_path)
-
         log_event(cwd_path, app_name, 'sys', 'Stopping the system')
-        terminate_hiFTPCleaner_CVloadAntifreeze(process) #4
+
+        if not faste_mode:
+            terminate_hiFTPCleaner_CVloadAntifreeze(process) #4
+
         cleanup_mei_folders(os.path.join(cwd_path, 'cams_media'))
 
