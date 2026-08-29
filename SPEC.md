@@ -4,6 +4,8 @@ id: 20260816125403
 
 # Система видео-аналитики для контроля розничных точек
 
+> **Набор Windows-приложений и Python-пайплайнов для загрузки редких кадров Camhi, CV-детекции людей, расчёта посещаемости/присутствия продавца и подготовки данных для Dashboard.**
+
 **Purpose:** Система расширяет возможности IP-камер Camhi до решения бизнес-задач розничной сети. Минимально работает под Windows (64-bit, от Windows 10), на обычном офисном ПК (8 ГБ RAM). Камеры отправляют на FTP-сервер не видеопоток, а статистическую выборку фотографий (по одному кадру каждые 45 секунд), что позволяет работать на узком канале связи (0.1 Мбит/с).
 
 ### Обзор и назначение
@@ -31,9 +33,75 @@ id: 20260816125403
 
 ---
 
+## USAGE
+
+> **Краткий запуск рабочих сценариев. Все команды выполняются из корня проекта; относительные пути в коде зависят от текущего рабочего каталога.**
+
+### Первый запуск CV-ядра
+
+1. Установить зависимости и поместить модель в `.venv/neural_network_models/yolov10x.pt`.
+2. Подготовить каталоги фотографий `cams_media/<камера>_photos/<YYYYMMDD>/*.jpg` или запустить загрузчики `00_hiSDloader_v4.py` / `01_hiFTPDloader_v3.py` отдельно.
+3. Запустить `CV_SYS_v1.py`. Если файла `CV_SYS_request_app_description.txt` нет, программа создаст его и завершится; заполнить `bot_token`, `chat_id`, флаг журнала.
+4. Следующий запуск создаст `db/cv.db`, обнаружит камеры по `cams_media/` и завершится для настройки зон, `work_hours` и `vis_count_alg` через `05_CVsetCam_v2.py`.
+5. После настройки повторно запустить ядро:
+
+```powershell
+.\.venv\Scripts\python.exe CV_SYS_v1.py
+```
+
+В текущей версии в `CV_SYS_v1.py` установлен `faste_mode = True`: ядро сразу начинает CV-обработку уже загруженных кадров и **не** запускает `CVloadAntifreeze`/загрузчики. Загрузчики должны работать независимо. Для накопленных дней остановить real-time ядро и выполнить:
+
+```powershell
+.\.venv\Scripts\python.exe CV_SYS_batch.py
+```
+
+Служебные команды:
+
+```powershell
+# Однократная миграция legacy CSV/Excel в SQLite
+.\.venv\Scripts\python.exe migrate_csv_to_sqlite.py
+
+# Ручное обновление legacy CSV для Excel Dashboard
+.\.venv\Scripts\python.exe export_visitors_csv.py
+
+# Проверка синтаксиса исходных модулей
+git ls-files "*.py" | ForEach-Object { .\.venv\Scripts\python.exe -m py_compile $_ }
+```
+
+GUI-модули `00`, `01`, `04`, `05`, `08`, `10` запускаются как `.py` из среды разработки либо как собранные Windows-`.exe`. Текстовые модули при первом запуске создают `<app>_request_app_description.txt`, после заполнения файла запускаются повторно.
+
+---
+
 ## ARCHITECTURE
 
 > **Общая архитектура, потоки данных, CV-ядро, алгоритмы, batch-пайплайн и прогнозирование посетителей.**
+
+```text
+Camhi IP-камеры
+   ├─ HTTP/SD ──> 00_hiSDloader ─┐
+   └─ FTP ──────> 01_hiFTPDloader ├─> cams_media/<camera>_{photos|images}/<day>/*.jpg
+                                  │
+                                  └─> CV_SYS_v1 (real-time) / CV_SYS_batch
+                                           │
+                                           v
+                                  YOLOv10: people + zones
+                                           │
+                                           v
+                                     db/cv.db (SQLite/WAL)
+                                      ├─ shapes_locs
+                                      ├─ visitors / no_seller_time
+                                      ├─ processed_images / cameras
+                                      └─ visitor_forecast
+                                           │
+                     ┌─────────────────────┼──────────────────────┐
+                     v                     v                      v
+              legacy CSV exports   Excel Dashboard       04/05/07/08 GUI
+
+Сервисный контур: 02 FTP cleanup · 03 loader restart · 06 gaps ·
+                   09 directory sync · 10 sampling · 11 Telegram monitoring
+```
+
+**Архитектурные примечания:** рабочий источник структурированных данных — единая локальная SQLite-база `db/cv.db`; CSV рядом с ней являются входом миграции, совместимыми экспортами для Excel или холодным резервом. Фотографии остаются файловым хранилищем. Все штатные обращения к SQLite проходят через `utils/db.py`.
 
 ### Архитектура и поток данных
 
@@ -46,39 +114,39 @@ id: 20260816125403
 - `02_hiFTPCleaner` и `03_CVloadAntifreeze` обслуживают этот контур (очистка FTP от старых дней, защита загрузчиков от «зависания»).
 
 ### Контур 2 — обработка (ядро CV_SYS)
-- `CV_SYS_v1.py` (ядро) в непрерывном цикле обходит камеры, прогоняет новые фотографии через YOLOv10 и пишет метаданные силуэтов в `db/shapes_locs.csv`.
+- `CV_SYS_v1.py` (ядро) в непрерывном цикле обходит камеры, прогоняет новые фотографии через YOLOv10 и пишет метаданные силуэтов в таблицу `shapes_locs` базы `db/cv.db`.
 - По завершении дня запускаются алгоритмы второго уровня:
-  - `visitors_counting` — оценка посетителей → `db/visitors.csv`;
-  - `no_seller_time` — время отсутствия человека в кадре → `db/no_seller_time.csv`.
-  - `visitor_forecast` — прогноз посетителей на полгода вперед с оценкой на прошедших полгода.
+  - `visitors_counting` — оценка посетителей → таблица `visitors`;
+  - `no_seller_time` — время отсутствия человека в кадре → таблица `no_seller_time`;
+  - `visitor_forecast` — недельный прогноз на 24 недели вперёд с оценкой закрытых недель → таблица `visitor_forecast`.
 - Производные таблицы сводятся в Dashboard (`0_VA_Dashboard.xlsx`) и панель оценки (`1_Sys_viscount_eval.xlsx`).
 
 ### Вспомогательный контур
 `04_CVdbViewer` (визуализация/фильтры), `05_CVsetCam` (настройка, пересчет базы данных), `06_MissingPhotoFinder` (пропуски), `07_SysViscountEval` (оценка точности), `08_CVdbArchivator` (архивация), `09_CVdbUpdater` (синхронизация/бэкап), `10_hiSampler` (выборка), `11_FTPDataAlert` (мониторинг камер в Telegram).
 
-**Поток:** камеры → FTP-сервер → загрузчики → `cams_media/` → CV_SYS (YOLOv10) → `db/` (таблицы силуэтов) → алгоритмы 2-го уровня → `db/` (посетители / отсутствие /  прогноз посетителей) → Dashboard Excel.
+**Поток:** камеры → HTTP/FTP → загрузчики → `cams_media/` → CV_SYS (YOLOv10) → `db/cv.db` (`shapes_locs`) → алгоритмы 2-го уровня → `visitors` / `no_seller_time` / `visitor_forecast` → совместимые CSV → Dashboard Excel.
 
 ---
 
 ### Ядро системы — CV_SYS
 
-`CV_SYS_v1.py` — единственный компонент, который запускается как `.py` (в среде PyCharm), а не как exe.
+`CV_SYS_v1.py` — основное постоянно работающее CV-ядро, запускаемое как `.py` в среде PyCharm. `CV_SYS_batch.py`, миграция, экспорт и модуль прогноза также являются Python-скриптами; пользовательские GUI/служебные приложения дополнительно собираются в `.exe`.
 
 ### Инициализация
 - Читает параметры через текстовый запрос `CV_SYS_request_app_description.txt` (`bot_token`, `chat_id`, флаг журнала).
 - `initializer()` сканирует `cams_media/`, формирует словарь `{имя_камеры: путь_к_фото}` и актуализирует `cameras` (добавляет новые камеры с зоной по умолчанию на весь кадр, `work_hours=(10,21)`, `vis_count_alg=(2,2)`).
 - **Первый запуск:** если база `db/cv.db` ещё не существовала — после `initializer` система выводит сообщение и останавливается (`sys.exit(0)`), чтобы пользователь настроил конфигурацию камер (зоны, `work_hours`, `vis_count_alg`); при повторном запуске стартует обычный цикл.
-- Запускает процесс `CVloadAntifreeze` (загружает все загрузчики с определенным интервалом и перезапускает их через некоторое время)
+- При `faste_mode=False` запускает `CVloadAntifreeze` и ждёт 5 минут загрузки новых медиа. **Фактическая настройка текущего кода — `faste_mode=True`**, поэтому этот блок отключён и загрузчики работают независимо.
 - Загружает модель `YOLO(.venv/neural_network_models/yolov10x.pt)`.
 
 ### Главный цикл
-Бесконечно обходит камеры в алфавитном порядке, для каждой вызывает `shape_detection(...)`, затем пауза 5 секунд. При ошибке — логирует, отправляет сообщение в Telegram, завершает вспомогательные процессы и пробрасывает исключение.
+Бесконечно обходит камеры в алфавитном порядке, для каждой вызывает `shape_detection(...)`, затем делает паузу 5 секунд. При ошибке логирует только имя типа исключения и пробрасывает его; отправка сообщения в Telegram в этом обработчике сейчас закомментирована. Вспомогательные процессы завершаются только при `faste_mode=False`.
 
 ### Алгоритм `shape_detection` (utils/funcs_CV.py)
 1. Загружает список уже обработанных файлов (`processed_images`), определяет последний обработанный день (`last_seen_day`).
 2. Собирает новые файлы по дням (начиная с `last_seen_day`).
 3. Для каждого нового файла:
-   - `cv2.imread` (BGR; конвертация в RGB не нужна — YOLO принимает BGR);
+   - `cv2.imread` (BGR; конвертация в RGB не нужна — YOLO принимает BGR); нулевой файл перечитывается один раз через 2 секунды, затем любой всё ещё нечитаемый/повреждённый кадр логируется, помечается обработанным и пропускается;
    - инференс `shape_detector(img, verbose=False)` (NMS уже внутри YOLO);
    - фильтр людей (класс 0, confidence ≥ 0.5);
    - фильтр дубликатов `is_duplicate_detection` (IoU > 0.9, либо близкие центры < 20 px + похожие размеры + IoU > 0.6);
@@ -161,11 +229,38 @@ id: 20260816125403
 
 > **Основные компоненты проекта, их файлы/пути и назначение; служебные модули.**
 
+| Компонент | Файл / путь | Назначение |
+|---|---|---|
+| Real-time CV-ядро | `CV_SYS_v1.py` | Непрерывная детекция новых кадров и расчёт закрытого дня |
+| Batch CV-ядро | `CV_SYS_batch.py` | Однократная обработка накопленных дней по группам камер |
+| SD-загрузчик | `00_hiSDloader_v4.py` | HTTP-загрузка фото/видео с SD-карты Camhi |
+| FTP-загрузчик | `01_hiFTPDloader_v3.py` | FTP-загрузка и опциональное удаление медиа |
+| Очистка FTP | `02_hiFTPCleaner_v3.py` | Удаление удалённых дней за пределами окна хранения |
+| Контроль загрузчиков | `03_CVloadAntifreeze_v2.py` | Периодический запуск и перезапуск loader-`.exe` |
+| Просмотр CV | `04_CVdbViewer_v2.py` | Фильтрация кадров и визуализация детекций/зон |
+| Настройка камер | `05_CVsetCam_v2.py` | Зоны, часы, параметры алгоритма и пересчёт данных |
+| Поиск пропусков | `06_MissingPhotoFinder_v1.py` | Поиск интервалов без фотографий |
+| Оценка точности | `07_SysViscountEval_v1.py` | Сравнение автоматического и ручного подсчёта |
+| Архиватор | `08_CVdbArchivator_v2.py` | Экспорт и удаление старых силуэтов из активной базы |
+| Синхронизация | `09_CVdbUpdater_v2.py` | Одностороннее обновление копии дерева проекта |
+| Выборка фото | `10_hiSampler_v2.py` | Копирование/перемещение выборки кадров |
+| FTP-мониторинг | `11_FTPDataAlert_v1.py` | Контроль потока кадров и Telegram-уведомления |
+| Слой данных | `utils/db.py` | SQLite-схема, единое подключение, DAL и legacy-экспорты |
+| CV-алгоритмы | `utils/funcs_CV.py` | YOLO-обработка, зоны, дедупликация, прогресс |
+| Бизнес-алгоритмы | `utils/funcs_vis_count_noseller_time.py` | Посетители, отсутствие продавца, backup и pipeline |
+| Прогноз | `utils/funcs_visitor_forecast.py` | Prophet-прогноз на 24 недели в отдельной среде |
+| Миграция | `migrate_csv_to_sqlite.py` | Однократный импорт legacy CSV/Excel в SQLite |
+| Экспорт | `export_visitors_csv.py` | Ручной экспорт SQLite в CSV для Dashboard |
+| Сборка | `build_pyinstaller_commands.ps1` | Сборка 12 пользовательских модулей PyInstaller |
+
 ### Структура проекта
 
 ```
 CV_Monitoring_Retail_Outlets_System/
 ├── CV_SYS_v1.py                      # ядро системы (PyTorch/Ultralytics YOLOv10)
+├── CV_SYS_batch.py                   # пакетная обработка накопленных дней
+├── migrate_csv_to_sqlite.py          # однократная миграция legacy-данных
+├── export_visitors_csv.py            # экспорт CSV для Dashboard
 ├── 00_hiSDloader_v4.py               # загрузчик с SD-карты (HTTP, GUI)
 ├── 01_hiFTPDloader_v3.py             # загрузчик с FTP (GUI)
 ├── 02_hiFTPCleaner_v3.py             # очистка FTP (текстовый UI)
@@ -179,20 +274,26 @@ CV_Monitoring_Retail_Outlets_System/
 ├── 10_hiSampler_v2.py                # выборка фотографий (GUI)
 ├── 11_FTPDataAlert_v1.py             # мониторинг камер → Telegram (текстовый UI)
 ├── utils/
+│   ├── db.py                         # SQLite-схема и слой доступа
 │   ├── funcs_CV.py                   # детекция, зоны, дубликаты, сохранение
 │   ├── funcs_vis_count_noseller_time.py  # алгоритмы посетителей/отсутствия
+│   ├── funcs_visitor_forecast.py     # недельный Prophet-прогноз
 │   ├── funcs_initializer_camconfig_getcamframe.py  # инициализация, camconfig
 │   ├── funcs_FTP_access_cams_media_structure.py    # доступ к FTP, структура медиа
-│   └── funcs_TxtUI_request_app_description.py      # текстовый UI, логи, утилиты
+│   ├── funcs_TxtUI_request_app_description.py      # текстовый UI, логи, утилиты
+│   └── contacts.py                   # общие контактные реквизиты GUI
 ├── ui/                               # 6 .ui файлов Qt Designer (модули 00,01,04,05,08,10)
+├── cams_media/                       # файловое хранилище кадров
+├── db/                               # cv.db + Excel/legacy CSV
+├── db_backups/                       # снимки каталога db
+├── imgs_cvdb/                        # результаты визуализации
 ├── bin/                              # готовые exe + комплекты VA_PC_CV / VA_PC_client (НЕ публиковать)
 ├── temp/                             # PyInstaller: build/, spec/ + образцы данных для анализа (НЕ публиковать)
 ├── archive/                          # старые версии, руководство пользователя (НЕ публиковать)
 ├── build_pyinstaller_commands.ps1    # скрипт сборки всех exe
-├── Dockerfile.script                 # контейнер для 11_FTPDataAlert
 ├── requirements.txt                  # зависимости (UTF-8)
 ├── README.md                         # краткое описание системы
-├── AGENTS.md                         # заметки для агента (среда исполнения)
+├── SPEC_template.md                  # структурный шаблон спецификации
 └── SPEC.md                           # этот файл
 ```
 
@@ -209,16 +310,15 @@ CV_Monitoring_Retail_Outlets_System/
 - **Режимы контента:** `alarm` (тревожные видео, статус `A`), `plan` (плановые, статус `P`), `images` (фото).
 - **Два диапазона времени** (`ftr` и опциональный `str`), фильтр по часам/минутам.
 - **`refresh`** — докачка начиная с последнего уже скачанного дня.
-- **`auto`** — бесконечный режим автообновления архива (~каждые 20 минут), при недоступности SD — уведомление в Telegram.
+- **`auto`** — бесконечный цикл с паузой 5 секунд; после прохода нижняя граница сдвигается на «текущее время минус 20 минут», чтобы повторно контролировать недавнее окно. При недоступности SD отправляется однократное уведомление в Telegram.
 - Настройки сохраняются в `<app>_hiSDconfig.dat` (pickle).
 - Три потока: `GetDays` (подключение/список дней), `EstimateThread` (оценка объёма), `ParseThread` (скачивание, 100 попыток переподключения).
 
 ### 01_hiFTPDloader_v3 (GUI, PyQt5)
 Загрузчик медиа с FTP-сервера (Beget) по протоколу FTP (`ftplib`). Логика аналогична 00, но вместо HTTP — FTP, есть список камер (кнопка «Камеры») и выбор камеры.
-- Режимы `alarm`/`images`; поддержка двух временных диапазонов; `refresh` и `auto`.
+- Режимы `alarm`/`images`; поддержка двух временных диапазонов; `refresh` и `auto` (цикл с паузой 5 секунд и повторной проверкой последних 20 минут).
 - **`with_deletion`** — после скачивания удаляет файлы с FTP (двухпроходная логика: основной проход без удаления, затем контрольный с удалением; нулевые файлы удаляются локально).
 - Отдельный `DeleteThread` — удаление файлов с FTP в выбранном диапазоне без скачивания.
-- Русский/английский интерфейс (`self.language`).
 - Настройки в `<app>_hiFTPconfig.dat` (pickle) — источник FTP-реквизитов для 02 и 11.
 
 ### 02_hiFTPCleaner_v3 (текстовый UI)
@@ -236,19 +336,19 @@ CV_Monitoring_Retail_Outlets_System/
 
 ### 05_CVsetCam_v2 (GUI, PyQt5)
 Настройка системы под особенности торговой точки.
-- **Рабочие часы** (`work_hours`) — запись в `camconfig.csv`.
-- **Зоны детекции** — до 3 зон `shape_zone` (рисуются мышью по кадру), сохранение в `camconfig.csv` или пересчёт `shapes_locs.csv` за выбранный период (`change_df_cam_shape_zone`), затем пересчёт посетителей `update_visitors`.
+- **Рабочие часы** (`work_hours`) — запись в таблицу `cameras` через `db.save_camconfig`.
+- **Зоны детекции** — до 3 зон `shape_zone` (рисуются мышью по кадру), сохранение в таблицу `cameras` или пересчёт строк `shapes_locs` за выбранный период, затем пересчёт посетителей `update_visitors`.
 - **Зона кассы** (`face_zone` / register zone) — аналогично.
 - Поток `SaveRecalculateThread` выполняет пересчёт без блокировки UI.
 
 ### 06_MissingPhotoFinder_v1 (текстовый UI)
-Поиск пропусков в фотографиях: находит временные промежутки (≥ 1 минуты) без кадров в рабочем диапазоне и пишет их в `<app>_respond.txt`. **Использует собственный формат запроса** (`<app>_request.txt` с полями `path:` и `working hours (10-20):`) вместо общего `request_app_description` — см. WORK & PROTOCOLS.
+Поиск пропусков в фотографиях: находит временные промежутки (≥ 1 минуты) без кадров в рабочем диапазоне и пишет их в `<app>_respond.txt`. Путь и рабочие часы (`10-20`) получает через общий двухэтапный `request_app_description` из `<app>_request_app_description.txt`.
 
 ### 07_SysViscountEval_v1 (текстовый UI)
-Оценка точности подсчёта посетителей. Берёт ручные данные из `db/1_real_viscount.xlsx`, сравнивает с расчётом алгоритма (`visitors_counting`) за те же дни, вычисляет ошибку (`err`) и `mape`. Пишет `<короткое_имя>_evstat.csv` (чередующиеся строки real/auto) и обновляет `_visitors.csv` ручными значениями (`s='real'`). Параметры алгоритма задаются в `<app>_current_params.txt` (свой формат — см. WORK & PROTOCOLS) и после оценки записываются в `camconfig.csv`.
+Оценка точности подсчёта посетителей. Читает ручные данные из таблицы `real_viscount` (исходный Excel импортируется миграцией), сравнивает их с `visitors_counting`, вычисляет `err` и `mape`, записывает таблицы `evstat`/`evstat_day` и заменяет соответствующие строки `visitors` ручными значениями (`s='real'`). Параметры задаются в специально сформированном `<app>_request_app_description.txt`, статус пишется в `<app>_program_status.txt`; это собственный парсер, а не общий `request_app_description`. После оценки `vis_count_alg` сохраняется в таблицу `cameras`.
 
 ### 08_CVdbArchivator_v2 (GUI, PyQt5)
-Архивация длинных таблиц силуэтов `shapes_locs.csv`. По дате отсечения (`cutoff_day`) делит таблицу: старые строки переносятся в `db_shapes_archive/<камера>/<первый_день>_<последний_день>/`, в `db/` остаётся «хвост». Потоки `EstimateThread` (предпросмотр границ) и `LetsArchiveThread` (архивация).
+Архивация строк `shapes_locs` выбранной камеры. По дате отсечения (`cutoff_day`) делит выборку: старые строки экспортируются в `db_shapes_archive/<камера>/<первый_день>_<последний_день>/<камера>_shapes_locs.csv`, а активная часть камеры полностью перезаписывается в SQLite. Потоки `EstimateThread` (предпросмотр границ) и `LetsArchiveThread` (архивация).
 
 ### 09_CVdbUpdater_v2 (текстовый UI)
 Синхронизация/обновление файлов при изменениях. Рекурсивно копирует дерево папок (источник → цель, с игнор-списком), затем мониторит `mtime` источника и пересинхронизирует при изменениях. Назначение:
@@ -259,19 +359,21 @@ CV_Monitoring_Retail_Outlets_System/
 Выборка (семплирование) фотографий: берёт каждый N-й файл (N = 3/5/10) из текущей папки и копирует (или перемещает) в подпапку `<папка>_xN`. Два потока: `EstimateThread` (подсчёт объёма) и `ParseThread` (выборка).
 
 ### 11_FTPDataAlert_v1 (текстовый UI)
-Мониторинг равномерности потока кадров с FTP → контроль работоспособности камер. Каждые 45 секунд в рабочие часы сравнивает последний кадр каждой камеры с текущим временем: если отставание > 3 минут — «камера не в сети» в Telegram; при восстановлении — «снова в сети» с длительностью простоя. В конце рабочего дня шлёт итоговое количество непустых кадров. Использует локальный сервер Telegram Bot API (обход блокировок), асинхронный фоновый отправитель (python-telegram-bot + httpx). Работает и в Docker (`Dockerfile.script`). Параметры через `request_app_description` (bot_token, chat_id).
+Мониторинг равномерности потока кадров с FTP → контроль работоспособности камер. Каждые 45 секунд в рабочие часы сравнивает последний кадр каждой камеры с текущим временем: если отставание > 3 минут — «камера не в сети» в Telegram; при восстановлении — «снова в сети» с длительностью простоя. В конце рабочего дня шлёт итоговое количество непустых кадров. Асинхронный фоновый отправитель (`python-telegram-bot` + `httpx`) использует официальный endpoint `https://api.telegram.org/bot`; упоминание локального Bot API в строке `DESCRIPTION` устарело. Dockerfile в текущем проекте отсутствует. Параметры — через `request_app_description` (`bot_token`, `chat_id`, журнал).
 
 ---
 
 ### Служебные модули (utils)
 
 - **funcs_CV.py** — `get_coords_from_text` (парсинг 1/2/3-зонных координат), `detection_zone_intersection` (пересечение bbox с зоной), `is_duplicate_detection`, `plus_random_8` (генерация uid), `save_shape_db_info`, `change_past_process`, `shape_detection`.
-- **funcs_vis_count_noseller_time.py** — `backup_db`, `base_columns_hours`, `short_name`, `find_new_shapes`, `visitors_counting`, `noSeller_time`, `add_photos_to_noSeller`, `vis_count_noseller_pipeline`, `update_visitors`. Содержит хардкод `cam_name == 'tlt'` (см. WORK & PROTOCOLS).
+- **db.py** — единственная точка прямого импорта `sqlite3`: `_connect`, создание схемы, преобразование wide/long, CRUD, экспорт CSV и функции проверки наличия данных.
+- **funcs_vis_count_noseller_time.py** — `backup_db`, `base_columns_hours`, `short_name`, `find_new_shapes`, `visitors_counting`, `noSeller_time`, `add_photos_to_noSeller`, `vis_count_noseller_pipeline`, `update_visitors`. Хардкода конкретной камеры нет.
+- **funcs_visitor_forecast.py** — недельный прогноз Prophet, дешёвый gate, запуск отдельного Python из `.venv-forecast`, запись SQLite и CSV-экспорт.
 - **funcs_initializer_camconfig_getcamframe.py** — `initializer`, `load_camconfig`, `save_camconfig`, `get_cam_frame`, `dt_slice_shape_df` (срез таблицы силуэтов по датам), `load/save_last_day_processed_imgs`.
 - **funcs_FTP_access_cams_media_structure.py** — `load_hiFTPconfig`, `get_ftp_host_user_pas` (чтение FTP-реквизитов из `.dat`), `get_cam_names`, `get_days_dd`, `get_day_folders`, `get_cams_days_dict`, `get_dt_last_day`.
 - **funcs_TxtUI_request_app_description.py** — `get_path` (ресурсы при PyInstaller), `request_app_description` (двухэтапный текстовый запрос параметров), `log_event` (CSV-журнал `<app>_event_log.csv`), `txt_notification`, `cleanup_mei_folders` (очистка `hi_temp/_MEI*`).
 
-**Паттерн текстового UI:** при первом запуске создаётся файл-запрос `<app>_request_app_description.txt` (шаблон для заполнения) и программа завершается; при втором запуске параметры читаются из файла и программа работает. Журнал — `<app>_event_log.csv`. Такое именование группирует файлы одного модуля в проводнике.
+**Паттерн текстового UI:** большинство текстовых модулей при первом запуске создают `<app>_request_app_description.txt` и завершаются; при втором запуске параметры читаются из файла. Журнал — `<app>_event_log.csv`. Исключение — `07_SysViscountEval`: имя файла то же, но содержимое и чтение реализованы собственными функциями `create_txt_params`/`read_txt_params`.
 
 **Форматы конфигов загрузчиков (`.dat`, pickle):** `hiFTPconfig` = `{ftp_host, ftp_user, ftp_pas, cam_name, day_start, day_end, rb_refresh, ftr_from, ftr_from_min, ftr_to, ftr_to_min, rb_str, str_from, str_from_min, str_to, str_to_min, rb_alarm, rb_images, with_deletion, rb_auto}`; `hiSDconfig` = `{ip_num, password, cam_name, day_start, day_end, rb_refresh, ftr_*, str_*, rb_alarm, rb_plan, rb_images, rb_auto, token, chat_id}`. Образцы лежат в `temp/` (не публикуются).
 
@@ -301,11 +403,21 @@ CV_Monitoring_Retail_Outlets_System/
 
 ### Зависимости и окружение
 
-`requirements.txt` (в кодировке UTF-8): torch/torchvision (cu126), ultralytics, pandas, matplotlib, opencv-python, openpyxl, PyQt5, pyTelegramBotAPI, requests, tqdm, html5lib, pyinstaller. Для `11_FTPDataAlert` дополнительно: python-telegram-bot, httpx, httpcore.
+`requirements.txt` (UTF-8) содержит: ultralytics, pandas, matplotlib, opencv-python, openpyxl, PyQt5, pyTelegramBotAPI, requests, tqdm, beautifulsoup4, html5lib, httpx, httpcore, pyinstaller; установка torch/torchvision cu126 приведена отдельной командой-комментарием.
+
+**Фактические зависимости кода шире файла:** напрямую импортируются также `numpy`, `Pillow`, `psutil` и пакет `python-telegram-bot` (`telegram.error` в модуле 11). Для прогнозной среды отдельно нужны `prophet`/`cmdstanpy`. Эти пакеты сейчас не перечислены активными строками `requirements.txt`, поэтому файл не является полностью воспроизводимым lock/spec окружения; при развёртывании их нужно устанавливать отдельно. `pyTelegramBotAPI` (`telebot`) и `python-telegram-bot` (`telegram.*`) — два разных пакета, проект использует оба.
 
 `bin/VA_PC_CV/Настройка_среды.txt` описывает **устаревшее** окружение TensorFlow (EfficientDet). Актуальный движок — PyTorch/Ultralytics YOLOv10 (см. WORK & PROTOCOLS).
 
 Пользовательская среда разработки — PyCharm с venv `.venv` (не трогать). Для агента — `.venv-linux` (см. ARCHITECTURE).
+
+---
+
+### Статус спецификации и проверки
+
+`SPEC.md` является подробным техническим источником истины; `README.md` — краткое пользовательское описание и содержит исторические маркетинговые формулировки/ссылки, которые не всегда отражают текущую реализацию. Последняя сквозная сверка выполнена 2026-08-27 по всем 24 отслеживаемым Python-файлам, 6 Qt `.ui`, `build_pyinstaller_commands.ps1`, `requirements.txt`, `.gitignore` и фактической схеме `db/cv.db`.
+
+При изменении поведения необходимо одновременно обновлять код и соответствующий раздел спецификации. Минимальная проверка перед фиксацией документации: компиляция всех отслеживаемых `.py`, поиск прямых подключений SQLite вне `utils/db.py`, проверка фактической схемы/PRAGMA рабочей базы и `git diff --check`.
 
 ---
 
@@ -327,6 +439,11 @@ CV_Monitoring_Retail_Outlets_System/
 ### Известные ограничения (не решено)
 
 - **Авто-режим загрузчиков (00/01):** тоглер `radioButton_auto` не останавливает цикл и при запуске другого действия (переподключение к камере) во время активного авто-потока (при уже снятом тоглере) идет нативный краш. Точная причина не установлена (нужен Windows-отладчик); подозревается паттерн «QThread-в-QThread» (worker-наследник QThread, перемещённый в другой QThread через `moveToThread`). Оставлено на будущее.
+- **Fast mode ядра:** `faste_mode=True` захардкожен в `CV_SYS_v1.py` (в имени переменной есть опечатка). Автоматический запуск/остановка `CVloadAntifreeze` и стартовая пауза 5 минут отключены; переключение возможно только изменением кода.
+- **Оповещение об аварии CV_SYS:** создание `TeleBot` выполняется, но вызов `bot.send_message(...)` в обработчике ошибки закомментирован; авария фиксируется только в CSV-журнале и пробрасывается наружу.
+- **Backup SQLite:** `backup_db()` вызывается при штатном `KeyboardInterrupt`, а не по отдельному ежедневному расписанию. Копируется весь каталог `db/` в `db_backups/YYYYMMDD`; повторный вызов в тот же день не обновляет уже созданную копию. При WAL активное соединение должно быть закрыто/закоммичено до файлового копирования.
+- **Автотесты:** в публикуемой кодовой базе нет поддерживаемого набора автоматических тестов; фактическая проверка опирается на `py_compile`/`compileall`, ручные smoke-тесты, рабочую SQLite-базу и ранее выполненные fixture round-trip проверки.
+- **Зависимости:** `requirements.txt` неполон относительно импортов (см. раздел «Зависимости и окружение»), поэтому чистая установка только из этого файла может завершиться ошибкой импорта.
 
 ---
 
@@ -336,10 +453,13 @@ CV_Monitoring_Retail_Outlets_System/
 
 ### Каталог данных и форматы
 
-### `db/` — база данных системы (CSV; направление развития — SQLite)
+### `db/` — SQLite-база и совместимые файлы
+
+Основной источник истины — `db/cv.db` (SQLite). CSV из прежней версии сохраняются как холодный резерв/источник однократной миграции; `*_visitors.csv`, `*_noSeller_time.csv`, `shape_db_info.csv` и `visitor_forecast.csv` также могут перезаписываться как legacy-экспорты для Excel Dashboard. Они не являются параллельной транзакционной базой.
 
 | Файл | Назначение |
 |---|---|
+| `cv.db` | Основная рабочая SQLite-база; путь вычисляется как `<cwd>/db/cv.db` |
 | `camconfig.csv` | Конфигурация камер: `cam_name, shape_zone, face_zone, frame, work_hours, vis_count_alg` |
 | `<камера>_shapes_locs.csv` | Метаданные силуэтов: `origin_file_name, uid8, shape_location, shape_zone_coords, shape_zone, face_zone_coords, face_zone` |
 | `<короткое_имя>_visitors.csv` | Посетители по часам: `date, <часы...>, sum, s` (`s` = auto/real) |
@@ -352,7 +472,7 @@ CV_Monitoring_Retail_Outlets_System/
 | `0_VA_Dashboard.xlsx` | Dashboard — сводная панель (выходная) |
 | `1_Sys_viscount_eval.xlsx` | Панель оценки работы системы (выходная, листы `<камера>_evstat`) |
 
-`db_backups/` — ежедневные копии `db/` (ротация до 180 дней).
+`db_backups/` — снимки всего каталога `db/`, создаваемые `backup_db()` при обработке `KeyboardInterrupt` в CV_SYS. Имя снимка — `YYYYMMDD`; существующий снимок текущего дня не обновляется. При количестве каталогов больше 180 удаляется первый элемент, возвращённый `os.listdir()` (код не сортирует список, поэтому строгое удаление самого старого снимка не гарантировано).
 
 ### Именование камер
 - Одна камера в точке → имя без цифр (`tlt`).
@@ -368,7 +488,7 @@ CV_Monitoring_Retail_Outlets_System/
 | `cam_name`, `origin_file_name`, имена | TEXT | ключи/идентификаторы |
 | `uid8` | TEXT | 22 цифры — не помещается в INTEGER (64-bit) |
 | `shape_location` | 4× INTEGER | `shape_y1, shape_y2, shape_x1, shape_x2` |
-| `shape_zone_coords`, `face_zone_coords`, `frame` | TEXT (JSON) | 1–3 прямоугольника, переменная длина |
+| `shape_zone_coords`, `face_zone_coords`, `frame` | TEXT | Строковое представление Python tuple/list; читается через `ast.literal_eval`, это не JSON |
 | `shape_zone`, `face_zone` | INTEGER | флаги 0/1 (в CSV `face_zone` пишется как float — артефакт pandas) |
 | счётчики посетителей, часы, `sum`, `err`, `photos`, `Number_of_lines` | INTEGER | |
 | минуты отсутствия продавца | INTEGER | |
@@ -378,7 +498,7 @@ CV_Monitoring_Retail_Outlets_System/
 | `s` (auto/real) | TEXT | |
 | `mape` | INTEGER | сотые доли (×100): «0,07» → 7; сейчас в CSV хранится строкой с запятой |
 
-**Решение:** таблицы `visitors` / `noSeller_time` / `evstat` переводятся в **long-формат** `(cam_name, date, hour, value)` — это устраняет динамические колонки (число часов зависит от `work_hours` камеры). Широкое представление для Dashboard собирается на лету в слое доступа (pivot).
+Таблицы `visitors` / `no_seller_time` / `evstat` хранятся в **long-формате** `(cam_name, date, hour, value)` — это устраняет динамические колонки (число часов зависит от `work_hours` камеры). Широкое представление для Dashboard собирается на лету в слое доступа (pivot).
 
 ### Схема SQLite
 
@@ -390,9 +510,9 @@ PRAGMA journal_mode = WAL;
 -- Камеры (бывш. camconfig.csv)
 CREATE TABLE cameras (
     cam_name        TEXT PRIMARY KEY,
-    shape_zone      TEXT NOT NULL,          -- JSON: 1..3 прямоугольника [[y1,y2,x1,x2],...]
-    face_zone       TEXT NOT NULL,          -- JSON [y1,y2,x1,x2]
-    frame           TEXT NOT NULL,          -- JSON [y1,y2,x1,x2]
+    shape_zone      TEXT NOT NULL,          -- Python literal: 1..3 прямоугольника
+    face_zone       TEXT NOT NULL,          -- Python tuple literal [y1,y2,x1,x2]
+    frame           TEXT NOT NULL,          -- Python tuple literal [y1,y2,x1,x2]
     hour_start      INTEGER NOT NULL,       -- из work_hours
     hour_end        INTEGER NOT NULL,       -- из work_hours
     mean_threshold  INTEGER NOT NULL,       -- из vis_count_alg
@@ -409,9 +529,9 @@ CREATE TABLE shapes_locs (
     shape_y2          INTEGER NOT NULL,
     shape_x1          INTEGER NOT NULL,
     shape_x2          INTEGER NOT NULL,
-    shape_zone_coords TEXT,                 -- JSON
+    shape_zone_coords TEXT,                 -- Python tuple/list literal
     shape_zone        INTEGER NOT NULL,     -- 0/1
-    face_zone_coords  TEXT,                 -- JSON
+    face_zone_coords  TEXT,                 -- Python tuple/list literal
     face_zone         INTEGER NOT NULL,     -- 0/1
     PRIMARY KEY (cam_name, origin_file_name, uid8)
 );
@@ -506,6 +626,9 @@ CREATE TABLE visitor_forecast (
 - `visitor_forecast` — прогноз посетителей, генерируется отдельным модулем (Prophet, отдельная среда `.venv-forecast`), см. описание модуля `visitor_forecast` в ARCHITECTURE.
 - Слой доступа (data access layer) конвертирует текущие DataFrame/CSV-структуры в эту схему и обратно, чтобы алгоритмы (`shape_detection`, `visitors_counting`, `noSeller_time`) не менялись.
 - **Экспорт для дашборда (временный механизм):** `db.export_dashboard_csv()` (CLI `export_visitors_csv.py`) зеркалит `visitors`/`no_seller_time` в legacy CSV рядом с базой: `{short_name}_visitors.csv` (колонки `date,<часы>,sum,s`) и `{short_name}_noSeller_time.csv` (`date,<часы>,sum,photos`). Вызывается автоматически в конце `vis_count_noseller_pipeline`; CSV подключаются к Excel-дашборду стейкхолдеров вместо старых CSV.
+- `db.export_shape_db_info_csv()` обновляет `shape_db_info.csv`; `db.export_forecast_csv()` обновляет `visitor_forecast.csv`.
+- Миграция прогноза намеренно читает `visitor_forecast_actual.csv`, тогда как рабочий экспорт называется `visitor_forecast.csv`; это разные роли файлов.
+- В схеме нет внешних ключей: согласованность `cam_name` и дат обеспечивается прикладным слоем.
 
 ### Конкурентный доступ
 
@@ -514,13 +637,17 @@ CREATE TABLE visitor_forecast (
 - Несколько программ могут держать базу открытой; вручную закрывать её не нужно.
 - **Важно:** WAL — только для локального диска (`D:\VN\odfr\db\cv.db`), не SMB/NFS.
 
+Путь не захардкожен: `db_path(cwd_path)` возвращает `<cwd_path>/db/cv.db`. Указанный выше `D:\VN\odfr\db\cv.db` — рабочий путь развёрнутой системы; база текущего checkout находится в `D:\pjs\CV_Monitoring_Retail_Outlets_System\db\cv.db`. Для неё 2026-08-27 фактически проверено `PRAGMA journal_mode = wal`.
+
+WAL сохраняется в самой базе, но `timeout`/`busy_timeout` относятся только к конкретному соединению. Все штатные обращения проекта к SQLite идут через `utils.db._connect()` и получают ожидание 15 секунд; сторонняя программа, открывшая `cv.db` напрямую, должна настроить собственный timeout. Фраза «вручную закрывать не нужно» означает, что перед запуском не требуется закрывать другие программы, однако каждое созданное соединение должно завершаться через `close()` или контекстный менеджер.
+
 ---
 
 ## SECRETS
 
-`.env` — **не в Git** (скрытый файл, правило `.*` в `.gitignore`).
+`.env` — **не в Git** (явное правило `.env` в `.gitignore`). Также игнорируются `*.dat`, `*.txt` и `*.csv`, поэтому локальные loader-конфиги, текстовые запросы, журналы и CSV-данные обычно не публикуются.
 
-Дополнительные чувствительные данные и реквизиты, использовавшиеся в проекте, вынесены из GUI-модулей в `utils/contacts.py`; конфигурационные `.dat`-файлы с FTP/камерными реквизитами и образцы находятся в `temp/` и не публикуются. Конкретные credentials, приведённые в агентской документации для тестирования, считаются секретными и не должны попадать в Git.
+FTP/камерные и Telegram-реквизиты находятся в локальных `.dat`/`*_request_app_description.txt` и не должны попадать в Git. `utils/contacts.py` при этом является отслеживаемым исходным файлом и содержит общие контактные/платёжные значения GUI; технически они **не защищены как секреты**. Если такие значения считаются чувствительными, их следует вынести в `.env`/локальную конфигурацию и заменить уже опубликованные реквизиты. Конкретные credentials из рабочих конфигов и агентских заметок запрещено копировать в спецификацию, логи и тестовые фикстуры.
 
 ---
 
@@ -529,10 +656,21 @@ CREATE TABLE visitor_forecast (
 ### Среда исполнения
 - **Агентская среда:** `.venv-linux` — `/root/workspace/CV_Monitoring_Retail_Outlets_System/.venv-linux/bin/python`
 - **Пользовательская среда PyCharm:** `.venv` — **НЕ ТРОГАТЬ**.
+- **Среда прогноза:** `.venv-forecast` — запускается только через `launch_visitor_forecast()` или напрямую для диагностики Prophet.
 
-### Запуск
+### Запуск скриптов
+
+Все скрипты запускаются из корня проекта. Каталогов `client/` или `src/` в текущей структуре нет.
+
 ```bash
-cd /root/workspace/CV_Monitoring_Retail_Outlets_System && .venv-linux/bin/python client/<script>.py
+cd /root/workspace/CV_Monitoring_Retail_Outlets_System && .venv-linux/bin/python <script>.py
+```
+
+В пользовательской Windows-среде:
+
+```powershell
+cd D:\pjs\CV_Monitoring_Retail_Outlets_System
+.\.venv\Scripts\python.exe <script>.py
 ```
 
 ### Доступ к камерам и тестирование загрузчиков
@@ -572,5 +710,9 @@ cd /root/workspace/CV_Monitoring_Retail_Outlets_System && .venv-linux/bin/python
 - 2026-08-17 — Удалена песочница `tests/`; реальные данные перенесены в корень проекта (рабочая база `db/cv.db`). Зафиксировано ограничение: штатная работа — один новый день за запуск.
 - 2026-08-17 — Пакетный пайплайн `CV_SYS_batch.py` (однократный, по группам магазина и по дням). В `shape_detection` добавлены параметры `only_day` и `skip_vis_count` (дефолты сохраняют real-time поведение). Проверено: группировка камер, сигнатура, `last_seen_day`.
 - 2026-08-19 — Модуль прогноза посетителей (Prophet): `utils/funcs_visitor_forecast.py` (отдельная среда `.venv-forecast`), таблица SQLite `visitor_forecast`, гейт `should_run_forecast` + subprocess-запуск `launch_visitor_forecast` из `vis_count_noseller_pipeline`, guard «все магазины посчитаны», выгрузка `visitor_forecast.csv` для дашборда. Снят техдолг №12.
+- 2026-08-27 — Нечитаемые/повреждённые кадры больше не останавливают pipeline: нулевой файл перечитывается один раз, затем кадр логируется, отмечается обработанным и пропускается.
+- 2026-08-27 — Добавлен legacy-экспорт `shape_db_info.csv`; в CV_SYS включён `faste_mode=True`, отключающий автоматический запуск загрузчиков.
+- 2026-08-27 — Для SQLite включён и фактически проверен WAL; `_connect()` задаёт `timeout=15` и `busy_timeout=15000` для конкурентного доступа.
+- 2026-08-27 — `SPEC.md` приведён к `SPEC_template.md`; выполнена сквозная сверка 24 Python-модулей, Qt UI, сборки, зависимостей, `.gitignore` и рабочей схемы SQLite. Исправлены устаревшие описания CSV, запуска, fast mode, Telegram endpoint, backup и зависимостей.
 
 ---
