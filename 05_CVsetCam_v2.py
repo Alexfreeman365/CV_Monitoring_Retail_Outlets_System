@@ -294,12 +294,12 @@ class SaveRecalculateThread(QThread):
         def change_camconfig_shape_zone(cam_name, shape_zone_coords):
             camconfig = load_camconfig(self.cwd_path)
             [cam_set.update(shape_zone=shape_zone_coords) for cam_set in camconfig if cam_set['cam_name'] == cam_name]
-            save_camconfig(camconfig)
+            save_camconfig(camconfig, self.cwd_path)
 
         def change_camconfig_face_zone(cam_name, face_zone_coords):
             camconfig = load_camconfig(self.cwd_path)
             [cam_set.update(face_zone=face_zone_coords) for cam_set in camconfig if cam_set['cam_name'] == cam_name]
-            save_camconfig(camconfig)
+            save_camconfig(camconfig, self.cwd_path)
 
         def change_df_cam_shape_zone(cam_name, shape_zone_coords):
             date_start = self.date_start
@@ -527,7 +527,7 @@ class UI(QDialog):
                 work_hours = int(start_hour), int(end_hour)
                 camconfig = load_camconfig(self.cwd_path)
                 [cam_set.update(work_hours=work_hours) for cam_set in camconfig if cam_set['cam_name'] == cam_name]
-                save_camconfig(camconfig)
+                save_camconfig(camconfig, self.cwd_path)
                 self.label_wishes_thanks.setText('')
                 self.label_out.setText(self.text_saved_successfully)
         except:

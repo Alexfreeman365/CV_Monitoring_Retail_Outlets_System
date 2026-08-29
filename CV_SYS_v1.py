@@ -74,7 +74,8 @@ if __name__ == '__main__':
     chat_id = int(chat_id)
     bot = telebot.TeleBot(bot_token)
 
-    first_run = not os.path.exists(db.db_path(cwd_path))
+    first_run = db.database_is_uninitialized(cwd_path)
+    db.init_db(cwd_path)
     ip_cam_data_paths_dict, cam_names = initializer(cwd_path)
     if first_run:
         log_event(cwd_path, app_name, 'sys', 'First run: camera config initialized. Configure cameras (work_hours, zones) and restart.')

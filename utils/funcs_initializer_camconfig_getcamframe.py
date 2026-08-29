@@ -4,7 +4,8 @@ from PIL import Image
 import utils.db as db
 
 
-def initializer(cwd_path=os.getcwd()):
+def initializer(cwd_path=None):
+    cwd_path = os.path.abspath(cwd_path) if cwd_path is not None else os.getcwd()
     def data_condition(item):
         return (len(str(item).split('_')) > 1) & (str(item).split('_')[-1] in ['images', 'photos'])
 
@@ -34,11 +35,11 @@ def initializer(cwd_path=os.getcwd()):
     return ip_cam_data_paths_dict, cam_names
 
 
-def load_camconfig(path=os.getcwd()):
+def load_camconfig(path=None):
     return db.load_camconfig(path)
 
 
-def save_camconfig(camconfig, cwd_path=os.getcwd()):
+def save_camconfig(camconfig, cwd_path=None):
     db.save_camconfig(camconfig, cwd_path)
 
 
@@ -58,9 +59,9 @@ def dt_slice_shape_df(df_cam, dt_start, dt_end):
     return df[(df['dt'] >= dt_start) & (df['dt'] < dt_end_full)].iloc[:, 0:-1]
 
 
-def load_last_day_processed_imgs(cam_name, cwd_path=os.getcwd()):
+def load_last_day_processed_imgs(cam_name, cwd_path=None):
     return db.read_last_day_processed(cam_name, cwd_path)
 
 
-def save_last_day_processed_imgs(last_day_processed_imgs, cam_name, cwd_path=os.getcwd()):
+def save_last_day_processed_imgs(last_day_processed_imgs, cam_name, cwd_path=None):
     db.write_last_day_processed(last_day_processed_imgs, cam_name, cwd_path)

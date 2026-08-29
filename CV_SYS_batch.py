@@ -51,6 +51,7 @@ def unprocessed_days(cam_name, images_path, cwd_path):
 
 def main():
     cwd_path = os.getcwd()
+    db.init_db(cwd_path)
     ip_cam_data_paths_dict, cam_names = initializer(cwd_path)
 
     model_path = os.path.join(cwd_path, MODEL_REL_PATH)

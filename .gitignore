@@ -8,7 +8,8 @@ archive/
 bin/
 dist/
 temp/
-tests/
+tests/*
+!tests/test_db_identity.py
 cams_media/
 db/
 db_backups/

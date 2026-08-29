@@ -2,20 +2,137 @@ import os
 import ast
 import sqlite3
 from datetime import datetime
+from urllib.parse import quote
 
 
-def db_path(cwd_path=os.getcwd()):
+RETAIL_PROJECT_ID = 'cv_monitoring_retail_outlets_system'
+ODFR_PROJECT_ID = 'odfr'
+UNKNOWN_PROJECT_ID = 'unknown'
+MISSING_DATABASE = 'missing'
+EMPTY_DATABASE = 'empty'
+
+# SQLite application_id is a 32-bit file-format marker (ASCII "CVRO").
+RETAIL_APPLICATION_ID = 0x4356524F
+ODFR_APPLICATION_ID = 0x4F444652  # reserved for the ODFR owner project
+RETAIL_SCHEMA_VERSION = 1
+
+# ODFR is checked first: a database polluted by an old Retail initializer may
+# also contain every table in _RETAIL_SIGNATURE.
+_ODFR_SIGNATURE = frozenset({
+    'shape_alarm_notif', 'faces', 'processed_fshapes', 'sysconfig', 'cleared_days',
+})
+_RETAIL_SIGNATURE = frozenset({
+    'days', 'visitors', 'no_seller_time', 'evstat', 'evstat_day', 'real_viscount',
+})
+_SHARED_PROJECTS = frozenset({RETAIL_PROJECT_ID, ODFR_PROJECT_ID})
+_RETAIL_ONLY = frozenset({RETAIL_PROJECT_ID})
+
+
+class DatabaseIdentityError(RuntimeError):
+    """The selected cv.db is missing, unknown, or owned by another project."""
+
+
+class DatabaseSchemaError(RuntimeError):
+    """A known project database does not provide a required compatible table."""
+
+
+def _cwd(cwd_path=None):
+    return os.path.abspath(os.fspath(cwd_path)) if cwd_path is not None else os.getcwd()
+
+
+def db_path(cwd_path=None):
     """Path to the single SQLite database."""
-    return os.path.join(cwd_path, 'db', 'cv.db')
+    return os.path.join(_cwd(cwd_path), 'db', 'cv.db')
 
 
-def _connect(cwd_path=os.getcwd()):
-    os.makedirs(os.path.join(cwd_path, 'db'), exist_ok=True)
-    conn = sqlite3.connect(db_path(cwd_path), timeout=15)
+def _readonly_uri(path):
+    # Encoding the entire Windows path also supports UNC paths; a file://host
+    # authority is rejected by standard SQLite builds on Windows.
+    return 'file:' + quote(os.path.abspath(path), safe='') + '?mode=ro'
+
+
+def _connect(cwd_path=None, read_only=False):
+    root = _cwd(cwd_path)
+    path = db_path(root)
+    if read_only:
+        if not os.path.isfile(path):
+            raise DatabaseIdentityError(f'Database does not exist: {path}')
+        conn = sqlite3.connect(_readonly_uri(path), uri=True, timeout=15)
+    else:
+        os.makedirs(os.path.join(root, 'db'), exist_ok=True)
+        conn = sqlite3.connect(path, timeout=15)
     conn.execute('PRAGMA busy_timeout = 15000')
-    conn.execute('PRAGMA journal_mode = WAL')
+    if not read_only:
+        conn.execute('PRAGMA journal_mode = WAL')
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _table_names(conn):
+    return {
+        row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+    }
+
+
+def identify_database(cwd_path=None):
+    """Return the owner project id without changing the database.
+
+    Legacy databases with application_id=0 are recognized by project-specific
+    table signatures. ODFR wins over Retail so an already polluted ODFR database
+    is still classified correctly.
+    """
+    path = db_path(cwd_path)
+    if not os.path.exists(path):
+        return MISSING_DATABASE
+    if os.path.getsize(path) == 0:
+        return EMPTY_DATABASE
+    try:
+        conn = _connect(cwd_path, read_only=True)
+        application_id = conn.execute('PRAGMA application_id').fetchone()[0]
+        tables = _table_names(conn)
+        conn.close()
+    except sqlite3.DatabaseError as error:
+        raise DatabaseIdentityError(f'Cannot identify SQLite database {path}: {error}') from error
+
+    if application_id == RETAIL_APPLICATION_ID:
+        return RETAIL_PROJECT_ID
+    if application_id == ODFR_APPLICATION_ID:
+        return ODFR_PROJECT_ID
+    if application_id != 0:
+        return UNKNOWN_PROJECT_ID
+    if _ODFR_SIGNATURE.issubset(tables):
+        return ODFR_PROJECT_ID
+    if _RETAIL_SIGNATURE.issubset(tables):
+        return RETAIL_PROJECT_ID
+    if not tables:
+        return EMPTY_DATABASE
+    return UNKNOWN_PROJECT_ID
+
+
+def database_is_uninitialized(cwd_path=None):
+    return identify_database(cwd_path) in {MISSING_DATABASE, EMPTY_DATABASE}
+
+
+def _require_tables(cwd_path, table_names, allowed_projects):
+    project_id = identify_database(cwd_path)
+    path = db_path(cwd_path)
+    if project_id in {MISSING_DATABASE, EMPTY_DATABASE}:
+        raise DatabaseIdentityError(
+            f'Database is not initialized: {path}. Run the owning project bootstrap first.')
+    if project_id == UNKNOWN_PROJECT_ID:
+        raise DatabaseIdentityError(f'Database belongs to an unknown project: {path}')
+    if project_id not in allowed_projects:
+        raise DatabaseIdentityError(
+            f'Operation is not allowed for project {project_id!r}: {path}')
+
+    conn = _connect(cwd_path, read_only=True)
+    missing = set(table_names) - _table_names(conn)
+    conn.close()
+    if missing:
+        raise DatabaseSchemaError(
+            f'Database {path} lacks required table(s): {", ".join(sorted(missing))}')
+    return project_id
 
 
 _CORE_SCHEMA = '''
@@ -113,9 +230,24 @@ CREATE INDEX IF NOT EXISTS idx_shapes_cam_day  ON shapes_locs (cam_name, day);
 CREATE INDEX IF NOT EXISTS idx_shapes_cam_uid8 ON shapes_locs (cam_name, uid8);
 '''
 
-def init_db(cwd_path=os.getcwd()):
+def init_db(cwd_path=None):
+    """Bootstrap or migrate the Retail database, never a foreign database."""
+    project_id = identify_database(cwd_path)
+    path = db_path(cwd_path)
+    if project_id not in {MISSING_DATABASE, EMPTY_DATABASE, RETAIL_PROJECT_ID}:
+        raise DatabaseIdentityError(
+            f'Refusing to apply the Retail schema to project {project_id!r}: {path}')
+
     conn = _connect(cwd_path)
+    current_version = conn.execute('PRAGMA user_version').fetchone()[0]
+    if current_version > RETAIL_SCHEMA_VERSION:
+        conn.close()
+        raise DatabaseSchemaError(
+            f'Database schema version {current_version} is newer than supported '
+            f'version {RETAIL_SCHEMA_VERSION}: {path}')
     conn.executescript(_CORE_SCHEMA)
+    conn.execute(f'PRAGMA application_id = {RETAIL_APPLICATION_ID}')
+    conn.execute(f'PRAGMA user_version = {RETAIL_SCHEMA_VERSION}')
     conn.commit()
     conn.close()
 
@@ -128,10 +260,10 @@ def _as_tuple(value):
     return tuple(value)
 
 
-def load_camconfig(cwd_path=os.getcwd()):
+def load_camconfig(cwd_path=None):
     """Return camconfig as list of dicts, compatible with the old CSV fields."""
-    init_db(cwd_path)
-    conn = _connect(cwd_path)
+    _require_tables(cwd_path, {'cameras'}, _SHARED_PROJECTS)
+    conn = _connect(cwd_path, read_only=True)
     rows = conn.execute('SELECT * FROM cameras').fetchall()
     conn.close()
     return [{
@@ -144,8 +276,8 @@ def load_camconfig(cwd_path=os.getcwd()):
     } for r in rows]
 
 
-def save_camconfig(camconfig, cwd_path=os.getcwd()):
-    init_db(cwd_path)
+def save_camconfig(camconfig, cwd_path=None):
+    _require_tables(cwd_path, {'cameras'}, _SHARED_PROJECTS)
     conn = _connect(cwd_path)
     conn.execute('DELETE FROM cameras')
     for cam in camconfig:
@@ -172,8 +304,8 @@ def _shape_location_tuple(v):
     return tuple(parts)
 
 
-def write_shapes(cam_name, df, cwd_path=os.getcwd(), mode='append'):
-    init_db(cwd_path)
+def write_shapes(cam_name, df, cwd_path=None, mode='append'):
+    _require_tables(cwd_path, {'shapes_locs'}, _SHARED_PROJECTS)
     conn = _connect(cwd_path)
     if mode == 'replace':
         conn.execute('DELETE FROM shapes_locs WHERE cam_name = ?', (cam_name,))
@@ -201,10 +333,11 @@ def write_shapes(cam_name, df, cwd_path=os.getcwd(), mode='append'):
     conn.close()
 
 
-def read_shapes(cam_name, cwd_path=os.getcwd()):
+def read_shapes(cam_name, cwd_path=None):
     """Return the shapes DataFrame in the exact CSV column layout."""
     import pandas as pd
-    conn = _connect(cwd_path)
+    _require_tables(cwd_path, {'shapes_locs'}, _SHARED_PROJECTS)
+    conn = _connect(cwd_path, read_only=True)
     df = pd.read_sql_query(
         'SELECT origin_file_name, uid8, shape_y1, shape_y2, shape_x1, shape_x2, '
         'shape_zone_coords, shape_zone, face_zone_coords, face_zone '
@@ -225,9 +358,10 @@ def _hour_cols(df):
     return [c for c in df.columns if str(c).isdigit()]
 
 
-def read_visitors(cam_name, cwd_path=os.getcwd()):
+def read_visitors(cam_name, cwd_path=None):
     import pandas as pd
-    conn = _connect(cwd_path)
+    _require_tables(cwd_path, {'visitors', 'days'}, _RETAIL_ONLY)
+    conn = _connect(cwd_path, read_only=True)
     df = pd.read_sql_query('SELECT date, hour, count FROM visitors WHERE cam_name = ?', conn, params=(cam_name,))
     days = pd.read_sql_query('SELECT date, s FROM days WHERE cam_name = ?', conn, params=(cam_name,))
     conn.close()
@@ -246,9 +380,9 @@ def read_visitors(cam_name, cwd_path=os.getcwd()):
     return wide[['date'] + sorted(hours) + ['sum', 's']]
 
 
-def write_visitors(cam_name, df, cwd_path=os.getcwd(), mode='append'):
+def write_visitors(cam_name, df, cwd_path=None, mode='append'):
     import pandas as pd
-    init_db(cwd_path)
+    _require_tables(cwd_path, {'visitors', 'days'}, _RETAIL_ONLY)
     conn = _connect(cwd_path)
     hours = [c for c in _hour_cols(df)]
     rows = []
@@ -267,9 +401,10 @@ def write_visitors(cam_name, df, cwd_path=os.getcwd(), mode='append'):
     conn.close()
 
 
-def read_no_seller(cam_name, cwd_path=os.getcwd()):
+def read_no_seller(cam_name, cwd_path=None):
     import pandas as pd
-    conn = _connect(cwd_path)
+    _require_tables(cwd_path, {'no_seller_time', 'days'}, _RETAIL_ONLY)
+    conn = _connect(cwd_path, read_only=True)
     df = pd.read_sql_query('SELECT date, hour, absence_minutes FROM no_seller_time WHERE cam_name = ?', conn, params=(cam_name,))
     days = pd.read_sql_query('SELECT date, photos FROM days WHERE cam_name = ?', conn, params=(cam_name,))
     conn.close()
@@ -288,9 +423,9 @@ def read_no_seller(cam_name, cwd_path=os.getcwd()):
     return wide[['date'] + sorted(hours) + ['sum', 'photos']]
 
 
-def write_no_seller(cam_name, df, cwd_path=os.getcwd(), mode='append'):
+def write_no_seller(cam_name, df, cwd_path=None, mode='append'):
     import pandas as pd
-    init_db(cwd_path)
+    _require_tables(cwd_path, {'no_seller_time', 'days'}, _RETAIL_ONLY)
     conn = _connect(cwd_path)
     hours = [c for c in _hour_cols(df)]
     rows = []
@@ -315,8 +450,9 @@ def _short_name(name):
     return name[:-1] if name[-1].isdigit() else name
 
 
-def export_dashboard_csv(cwd_path=os.getcwd()):
+def export_dashboard_csv(cwd_path=None):
     """Mirror visitors/no_seller to legacy CSV (dashboard link) in db/."""
+    cwd_path = _cwd(cwd_path)
     camconfig = load_camconfig(cwd_path)
     short_names = sorted({_short_name(c['cam_name']) for c in camconfig})
     for sn in short_names:
@@ -346,9 +482,9 @@ def _mape_to_str(mape_int):
     return str(mape_int / 100).replace('.', ',')
 
 
-def write_evstat(cam_name, df, cwd_path=os.getcwd(), mode='replace'):
+def write_evstat(cam_name, df, cwd_path=None, mode='replace'):
     import pandas as pd
-    init_db(cwd_path)
+    _require_tables(cwd_path, {'evstat', 'evstat_day'}, _RETAIL_ONLY)
     conn = _connect(cwd_path)
     hours = [c for c in _hour_cols(df)]
     if mode == 'replace':
@@ -371,9 +507,10 @@ def write_evstat(cam_name, df, cwd_path=os.getcwd(), mode='replace'):
     conn.close()
 
 
-def read_evstat(cam_name, cwd_path=os.getcwd()):
+def read_evstat(cam_name, cwd_path=None):
     import pandas as pd
-    conn = _connect(cwd_path)
+    _require_tables(cwd_path, {'evstat', 'evstat_day'}, _RETAIL_ONLY)
+    conn = _connect(cwd_path, read_only=True)
     ev = pd.read_sql_query('SELECT date, hour, count_real, count_auto FROM evstat WHERE cam_name = ?', conn, params=(cam_name,))
     day = pd.read_sql_query('SELECT date, sum_real, sum_auto, err, mape FROM evstat_day WHERE cam_name = ?', conn, params=(cam_name,))
     conn.close()
@@ -401,16 +538,17 @@ def read_evstat(cam_name, cwd_path=os.getcwd()):
 
 # --- processed_images (last_day_processed_imgs) ---
 
-def read_last_day_processed(cam_name, cwd_path=os.getcwd()):
-    conn = _connect(cwd_path)
+def read_last_day_processed(cam_name, cwd_path=None):
+    _require_tables(cwd_path, {'processed_images'}, _SHARED_PROJECTS)
+    conn = _connect(cwd_path, read_only=True)
     rows = conn.execute(
         'SELECT file_name FROM processed_images WHERE cam_name = ? ORDER BY rowid', (cam_name,)).fetchall()
     conn.close()
     return [r['file_name'] for r in rows]
 
 
-def write_last_day_processed(file_names, cam_name, cwd_path=os.getcwd()):
-    init_db(cwd_path)
+def write_last_day_processed(file_names, cam_name, cwd_path=None):
+    _require_tables(cwd_path, {'processed_images'}, _SHARED_PROJECTS)
     conn = _connect(cwd_path)
     conn.execute('DELETE FROM processed_images WHERE cam_name = ?', (cam_name,))
     conn.executemany(
@@ -422,9 +560,10 @@ def write_last_day_processed(file_names, cam_name, cwd_path=os.getcwd()):
 
 # --- shape_db_info ---
 
-def read_shape_db_info(cwd_path=os.getcwd()):
+def read_shape_db_info(cwd_path=None):
     import pandas as pd
-    conn = _connect(cwd_path)
+    _require_tables(cwd_path, {'shape_db_info'}, _SHARED_PROJECTS)
+    conn = _connect(cwd_path, read_only=True)
     df = pd.read_sql_query('SELECT * FROM shape_db_info', conn)
     conn.close()
     if df.empty:
@@ -436,8 +575,8 @@ def read_shape_db_info(cwd_path=os.getcwd()):
     return df
 
 
-def write_shape_db_info(df, cwd_path=os.getcwd()):
-    init_db(cwd_path)
+def write_shape_db_info(df, cwd_path=None):
+    _require_tables(cwd_path, {'shape_db_info'}, _SHARED_PROJECTS)
     conn = _connect(cwd_path)
     conn.execute('DELETE FROM shape_db_info')
     conn.executemany(
@@ -449,17 +588,19 @@ def write_shape_db_info(df, cwd_path=os.getcwd()):
     conn.close()
 
 
-def export_shape_db_info_csv(cwd_path=os.getcwd()):
+def export_shape_db_info_csv(cwd_path=None):
     """Mirror shape_db_info to legacy CSV (dashboard link) in db/."""
+    cwd_path = _cwd(cwd_path)
     df = read_shape_db_info(cwd_path)
     if not df.empty:
         df.to_csv(os.path.join(cwd_path, 'db', 'shape_db_info.csv'), index=False)
 
 
-def build_shape_db_info(cam_names, cwd_path=os.getcwd()):
+def build_shape_db_info(cam_names, cwd_path=None):
     """Build the shape_db_info DataFrame from the per-camera shapes tables."""
     import pandas as pd
-    conn = _connect(cwd_path)
+    _require_tables(cwd_path, {'shapes_locs'}, _SHARED_PROJECTS)
+    conn = _connect(cwd_path, read_only=True)
     rows = []
     for cam_name in cam_names:
         try:
@@ -478,37 +619,40 @@ def build_shape_db_info(cam_names, cwd_path=os.getcwd()):
     return pd.DataFrame(rows)
 
 
-def shapes_exist(cam_name, cwd_path=os.getcwd()):
-    conn = _connect(cwd_path)
-    try:
-        n = conn.execute('SELECT COUNT(*) FROM shapes_locs WHERE cam_name = ?', (cam_name,)).fetchone()[0]
-    except sqlite3.OperationalError:
-        n = 0
+def shapes_exist(cam_name, cwd_path=None):
+    _require_tables(cwd_path, {'shapes_locs'}, _SHARED_PROJECTS)
+    conn = _connect(cwd_path, read_only=True)
+    n = conn.execute(
+        'SELECT COUNT(*) FROM shapes_locs WHERE cam_name = ?', (cam_name,)).fetchone()[0]
     conn.close()
     return n > 0
 
 
-def shapes_count(cam_name, cwd_path=os.getcwd()):
-    conn = _connect(cwd_path)
-    try:
-        n = conn.execute('SELECT COUNT(*) FROM shapes_locs WHERE cam_name = ?', (cam_name,)).fetchone()[0]
-    except sqlite3.OperationalError:
-        n = 0
+def shapes_count(cam_name, cwd_path=None):
+    _require_tables(cwd_path, {'shapes_locs'}, _SHARED_PROJECTS)
+    conn = _connect(cwd_path, read_only=True)
+    n = conn.execute(
+        'SELECT COUNT(*) FROM shapes_locs WHERE cam_name = ?', (cam_name,)).fetchone()[0]
     conn.close()
     return n
 
 
-def visitors_exist(cam_name, cwd_path=os.getcwd()):
-    conn = _connect(cwd_path)
-    n = conn.execute('SELECT COUNT(*) FROM visitors WHERE cam_name = ?', (cam_name,)).fetchone()[0]
+def visitors_exist(cam_name, cwd_path=None):
+    if identify_database(cwd_path) != RETAIL_PROJECT_ID:
+        return False
+    _require_tables(cwd_path, {'visitors'}, _RETAIL_ONLY)
+    conn = _connect(cwd_path, read_only=True)
+    n = conn.execute(
+        'SELECT COUNT(*) FROM visitors WHERE cam_name = ?', (cam_name,)).fetchone()[0]
     conn.close()
     return n > 0
 
 
-def read_real_viscount(cam_name, cwd_path=os.getcwd()):
+def read_real_viscount(cam_name, cwd_path=None):
     """Return the manual count in the wide layout used by the Excel sheet."""
     import pandas as pd
-    conn = _connect(cwd_path)
+    _require_tables(cwd_path, {'real_viscount'}, _RETAIL_ONLY)
+    conn = _connect(cwd_path, read_only=True)
     df = pd.read_sql_query('SELECT date, hour, count FROM real_viscount WHERE cam_name = ?', conn, params=(cam_name,))
     conn.close()
     if df.empty:
@@ -524,9 +668,9 @@ def read_real_viscount(cam_name, cwd_path=os.getcwd()):
     return wide
 
 
-def write_real_viscount(cam_name, df, cwd_path=os.getcwd(), mode='replace'):
+def write_real_viscount(cam_name, df, cwd_path=None, mode='replace'):
     import pandas as pd
-    init_db(cwd_path)
+    _require_tables(cwd_path, {'real_viscount'}, _RETAIL_ONLY)
     conn = _connect(cwd_path)
     hours = [c for c in _hour_cols(df)]
     rows = []
@@ -564,15 +708,13 @@ def _forecast_mape_to_str(value):
     return str(value / 10000).replace('.', ',')
 
 
-def read_visitor_forecast_all(cwd_path=os.getcwd()):
+def read_visitor_forecast_all(cwd_path=None):
     """Wide forecast DataFrame: date + {cam}_pred/{cam}_real/{cam}_mape (int mape)."""
     import pandas as pd
-    conn = _connect(cwd_path)
-    try:
-        df = pd.read_sql_query(
-            'SELECT cam_name, date, pred, real, mape FROM visitor_forecast', conn)
-    except sqlite3.OperationalError:
-        df = pd.DataFrame(columns=['cam_name', 'date', 'pred', 'real', 'mape'])
+    _require_tables(cwd_path, {'visitor_forecast'}, _RETAIL_ONLY)
+    conn = _connect(cwd_path, read_only=True)
+    df = pd.read_sql_query(
+        'SELECT cam_name, date, pred, real, mape FROM visitor_forecast', conn)
     conn.close()
     if df.empty:
         return pd.DataFrame(columns=['date'])
@@ -591,10 +733,10 @@ def read_visitor_forecast_all(cwd_path=os.getcwd()):
     return wide.sort_values('date').reset_index(drop=True)[cols]
 
 
-def write_visitor_forecast_all(df, cwd_path=os.getcwd()):
+def write_visitor_forecast_all(df, cwd_path=None):
     """Write a wide forecast DataFrame (date + {cam}_pred/_real/_mape) to long format."""
     import pandas as pd
-    init_db(cwd_path)
+    _require_tables(cwd_path, {'visitor_forecast'}, _RETAIL_ONLY)
     conn = _connect(cwd_path)
     conn.execute('DELETE FROM visitor_forecast')
     if df.empty:
@@ -616,9 +758,10 @@ def write_visitor_forecast_all(df, cwd_path=os.getcwd()):
     conn.close()
 
 
-def export_forecast_csv(cwd_path=os.getcwd()):
+def export_forecast_csv(cwd_path=None):
     """Mirror visitor_forecast to legacy CSV (dashboard link), mape as '0,12' strings."""
     import pandas as pd
+    cwd_path = _cwd(cwd_path)
     wide = read_visitor_forecast_all(cwd_path)
     if wide.empty:
         return
@@ -628,17 +771,15 @@ def export_forecast_csv(cwd_path=os.getcwd()):
     wide.to_csv(os.path.join(cwd_path, 'db', 'visitor_forecast.csv'), index=False)
 
 
-def read_visitors_daily(cam_name, cwd_path=os.getcwd()):
+def read_visitors_daily(cam_name, cwd_path=None):
     """Daily visitor sums as Prophet-ready DataFrame (ds=datetime, y=int)."""
     import pandas as pd
-    conn = _connect(cwd_path)
-    try:
-        df = pd.read_sql_query(
-            'SELECT date AS ds, SUM(count) AS y FROM visitors '
-            'WHERE cam_name = ? GROUP BY date ORDER BY date',
-            conn, params=(cam_name,))
-    except sqlite3.OperationalError:
-        df = pd.DataFrame(columns=['ds', 'y'])
+    _require_tables(cwd_path, {'visitors'}, _RETAIL_ONLY)
+    conn = _connect(cwd_path, read_only=True)
+    df = pd.read_sql_query(
+        'SELECT date AS ds, SUM(count) AS y FROM visitors '
+        'WHERE cam_name = ? GROUP BY date ORDER BY date',
+        conn, params=(cam_name,))
     conn.close()
     if df.empty:
         return pd.DataFrame(columns=['ds', 'y'])
