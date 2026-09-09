@@ -26,8 +26,7 @@ id: 20260816125403
 - поиск пропусков в фотографиях;
 - оценка точности алгоритма подсчёта посетителей;
 - подбор параметров алгоритма (средний порог, окно) и зон детекции;
-- архивирование и бэкап базы;
-- мониторинг работоспособности камер с оповещением в Telegram.
+- резервное копирование базы.
 
 Детекция силуэтов людей выполняется моделью **YOLOv10 (yolov10x.pt, PyTorch / Ultralytics)**. Каждый кадр обрабатывается независимо: детектируются люди (класс 0 COCO, уверенность ≥ 0.5), отсеиваются дубликаты bbox, вычисляется принадлежность силуэта зоне детекции и зоне кассы.
 
@@ -68,7 +67,7 @@ id: 20260816125403
 git ls-files "*.py" | ForEach-Object { .\.venv\Scripts\python.exe -m py_compile $_ }
 ```
 
-GUI-модули `00`, `01`, `04`, `05`, `08`, `10` запускаются как `.py` из среды разработки либо как собранные Windows-`.exe`. Текстовые модули при первом запуске создают `<app>_request_app_description.txt`, после заполнения файла запускаются повторно.
+GUI-модули `00`, `01`, `04`, `05`, `09` запускаются как `.py` из среды разработки либо как собранные Windows-`.exe`. Текстовые модули при первом запуске создают `<app>_request_app_description.txt`, после заполнения файла запускаются повторно.
 
 ---
 
@@ -95,10 +94,10 @@ Camhi IP-камеры
                                            │
                      ┌─────────────────────┼──────────────────────┐
                      v                     v                      v
-              legacy CSV exports   Excel Dashboard       04/05/07/08 GUI
+              legacy CSV exports   Excel Dashboard       04/05 GUI
 
 Сервисный контур: 02 FTP cleanup · 03 loader restart · 06 gaps ·
-                   09 directory sync · 10 sampling · 11 Telegram monitoring
+                   08 directory sync · 09 sampling
 ```
 
 **Архитектурные примечания:** рабочий источник структурированных данных — единая локальная SQLite-база `db/cv.db`; CSV рядом с ней являются входом миграции, совместимыми экспортами для Excel или холодным резервом. Фотографии остаются файловым хранилищем. Все штатные обращения к SQLite проходят через `utils/db.py`. `cwd` выбирает корень проекта, но не определяет владельца схемы: перед созданием или записью таблиц слой данных отдельно идентифицирует открытую базу.
@@ -122,7 +121,7 @@ Camhi IP-камеры
 - Производные таблицы сводятся в Dashboard (`0_VA_Dashboard.xlsx`) и панель оценки (`1_Sys_viscount_eval.xlsx`).
 
 ### Вспомогательный контур
-`04_CVdbViewer` (визуализация/фильтры), `05_CVsetCam` (настройка, пересчет базы данных), `06_MissingPhotoFinder` (пропуски), `07_SysViscountEval` (оценка точности), `08_CVdbArchivator` (архивация), `09_CVdbUpdater` (синхронизация/бэкап), `10_hiSampler` (выборка), `11_FTPDataAlert` (мониторинг камер в Telegram).
+`04_CVdbViewer` (визуализация/фильтры), `05_CVsetCam` (настройка, пересчет базы данных), `06_MissingPhotoFinder` (пропуски), `07_SysViscountEval` (оценка точности), `08_CVdbUpdater` (синхронизация/бэкап), `09_hiSampler` (выборка).
 
 **Поток:** камеры → HTTP/FTP → загрузчики → `cams_media/` → CV_SYS (YOLOv10) → `db/cv.db` (`shapes_locs`) → алгоритмы 2-го уровня → `visitors` / `no_seller_time` / `visitor_forecast` → совместимые CSV → Dashboard Excel.
 
@@ -263,10 +262,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 | Настройка камер | `05_CVsetCam_v2.py` | Зоны, часы, параметры алгоритма и пересчёт данных |
 | Поиск пропусков | `06_MissingPhotoFinder_v1.py` | Поиск интервалов без фотографий |
 | Оценка точности | `07_SysViscountEval_v1.py` | Сравнение автоматического и ручного подсчёта |
-| Архиватор | `08_CVdbArchivator_v2.py` | Экспорт и удаление старых силуэтов из активной базы |
-| Синхронизация | `09_CVdbUpdater_v2.py` | Одностороннее обновление копии дерева проекта |
-| Выборка фото | `10_hiSampler_v2.py` | Копирование/перемещение выборки кадров |
-| FTP-мониторинг | `11_FTPDataAlert_v1.py` | Контроль потока кадров и Telegram-уведомления |
+| Синхронизация | `08_CVdbUpdater_v2.py` | Одностороннее обновление копии дерева проекта |
+| Выборка фото | `09_hiSampler_v2.py` | Копирование/перемещение выборки кадров |
 | Слой данных | `utils/db.py` | SQLite-схема, единое подключение, DAL и legacy-экспорты |
 | CV-алгоритмы | `utils/funcs_CV.py` | YOLO-обработка, зоны, дедупликация, прогресс |
 | Бизнес-алгоритмы | `utils/funcs_vis_count_noseller_time.py` | Посетители, отсутствие продавца, backup и pipeline |
@@ -291,10 +288,8 @@ CV_Monitoring_Retail_Outlets_System/
 ├── 05_CVsetCam_v2.py                 # настройка камер/зон (GUI)
 ├── 06_MissingPhotoFinder_v1.py       # поиск пропусков фото (текстовый UI)
 ├── 07_SysViscountEval_v1.py          # оценка точности подсчёта (текстовый UI)
-├── 08_CVdbArchivator_v2.py           # архивация таблиц силуэтов (GUI)
-├── 09_CVdbUpdater_v2.py              # синхронизация/бэкап папок (текстовый UI)
-├── 10_hiSampler_v2.py                # выборка фотографий (GUI)
-├── 11_FTPDataAlert_v1.py             # мониторинг камер → Telegram (текстовый UI)
+├── 08_CVdbUpdater_v2.py              # синхронизация/бэкап папок (текстовый UI)
+├── 09_hiSampler_v2.py                # выборка фотографий (GUI)
 ├── utils/
 │   ├── db.py                         # SQLite-схема и слой доступа
 │   ├── funcs_CV.py                   # детекция, зоны, дубликаты, сохранение
@@ -369,19 +364,13 @@ CV_Monitoring_Retail_Outlets_System/
 ### 07_SysViscountEval_v1 (текстовый UI)
 Оценка точности подсчёта посетителей. Читает ручные данные из таблицы `real_viscount` (исходный Excel импортируется миграцией), сравнивает их с `visitors_counting`, вычисляет `err` и `mape`, записывает таблицы `evstat`/`evstat_day` и заменяет соответствующие строки `visitors` ручными значениями (`s='real'`). Параметры задаются в специально сформированном `<app>_request_app_description.txt`, статус пишется в `<app>_program_status.txt`; это собственный парсер, а не общий `request_app_description`. После оценки `vis_count_alg` сохраняется в таблицу `cameras`.
 
-### 08_CVdbArchivator_v2 (GUI, PyQt5)
-Архивация строк `shapes_locs` выбранной камеры. По дате отсечения (`cutoff_day`) делит выборку: старые строки экспортируются в `db_shapes_archive/<камера>/<первый_день>_<последний_день>/<камера>_shapes_locs.csv`, а активная часть камеры полностью перезаписывается в SQLite. Потоки `EstimateThread` (предпросмотр границ) и `LetsArchiveThread` (архивация).
-
-### 09_CVdbUpdater_v2 (текстовый UI)
+### 08_CVdbUpdater_v2 (текстовый UI)
 Синхронизация/обновление файлов при изменениях. Рекурсивно копирует дерево папок (источник → цель, с игнор-списком), затем мониторит `mtime` источника и пересинхронизирует при изменениях. Назначение:
 - на ПК-клиенте — забрать базу из локального Google Диска в папку с базой фотографий;
 - на обрабатывающем ПК — дублирование базы на другой диск (дополнительный бэкап).
 
-### 10_hiSampler_v2 (GUI, PyQt5)
+### 09_hiSampler_v2 (GUI, PyQt5)
 Выборка (семплирование) фотографий: берёт каждый N-й файл (N = 3/5/10) из текущей папки и копирует (или перемещает) в подпапку `<папка>_xN`. Два потока: `EstimateThread` (подсчёт объёма) и `ParseThread` (выборка).
-
-### 11_FTPDataAlert_v1 (текстовый UI)
-Мониторинг равномерности потока кадров с FTP → контроль работоспособности камер. Каждые 45 секунд в рабочие часы сравнивает последний кадр каждой камеры с текущим временем: если отставание > 3 минут — «камера не в сети» в Telegram; при восстановлении — «снова в сети» с длительностью простоя. В конце рабочего дня шлёт итоговое количество непустых кадров. Асинхронный фоновый отправитель (`python-telegram-bot` + `httpx`) использует официальный endpoint `https://api.telegram.org/bot`; упоминание локального Bot API в строке `DESCRIPTION` устарело. Dockerfile в текущем проекте отсутствует. Параметры — через `request_app_description` (`bot_token`, `chat_id`, журнал).
 
 ---
 
@@ -427,7 +416,7 @@ CV_Monitoring_Retail_Outlets_System/
 
 `requirements.txt` (UTF-8) содержит: ultralytics, pandas, matplotlib, opencv-python, openpyxl, PyQt5, pyTelegramBotAPI, requests, tqdm, beautifulsoup4, html5lib, httpx, httpcore, pyinstaller; установка torch/torchvision cu126 приведена отдельной командой-комментарием.
 
-**Фактические зависимости кода шире файла:** напрямую импортируются также `numpy`, `Pillow`, `psutil` и пакет `python-telegram-bot` (`telegram.error` в модуле 11). Для прогнозной среды отдельно нужны `prophet`/`cmdstanpy`. Эти пакеты сейчас не перечислены активными строками `requirements.txt`, поэтому файл не является полностью воспроизводимым lock/spec окружения; при развёртывании их нужно устанавливать отдельно. `pyTelegramBotAPI` (`telebot`) и `python-telegram-bot` (`telegram.*`) — два разных пакета, проект использует оба.
+**Фактические зависимости кода шире файла:** напрямую импортируются также `numpy`, `Pillow`, `psutil`. Для прогнозной среды отдельно нужны `prophet`/`cmdstanpy`. Эти пакеты сейчас не перечислены активными строками `requirements.txt`, поэтому файл не является полностью воспроизводимым lock/spec окружения; при развёртывании их нужно устанавливать отдельно. Для Telegram-уведомлений оставшихся модулей используется `pyTelegramBotAPI` (`telebot`).
 
 `bin/VA_PC_CV/Настройка_среды.txt` описывает **устаревшее** окружение TensorFlow (EfficientDet). Актуальный движок — PyTorch/Ultralytics YOLOv10 (см. WORK & PROTOCOLS).
 
@@ -455,8 +444,7 @@ CV_Monitoring_Retail_Outlets_System/
 - **01_hiFTPDloader_v3** (4 потока: GetDays, EstimateThread, ParseThread, DeleteThread) — аналогично 00 + `radioButton_with_deletion` (`with_deletion_status`), `output_dir` → `self.output_dir`; `stop_auto_thread()`.
 - **04_CVdbViewer_v2** (2 потока) — сняты `cb_*`, `le_cam_name`, `le_certain_zone`, `cb_shape_bbox/zone/face_zone`; `progressBar.value()` → `file_idx` (enumerate); `pb_choose_cam`/`le_cam_name` `setEnabled` из потока вынесены в отдельный сигнал `cam_choose_enable` → слот `set_cam_choose_enabled` (чтобы кнопка «Камеры» оставалась активной при старте).
 - **05_CVsetCam_v2** (1 поток: SaveRecalculateThread) — сняты `le_cam_name`, `le_date_start/end`, `le_shape_zone_1/2/3`, `le_register_zone`, `text_wait`, `text_saved_successfully` (правки точечные, чтобы не задеть окна ShowCams/Showlast10days/ShowZoneWindow/SetZoneWindow).
-- **08_CVdbArchivator_v2** (2 потока) — сняты `le_cam_name`, `le_cutoff_day`, `text_done`, `text_data_error`.
-- **10_hiSampler_v2** (2 потока) — сняты `radioButton_over_3/5/10`, `checkBox_move`.
+- **09_hiSampler_v2** (2 потока) — сняты `radioButton_over_3/5/10`, `checkBox_move`.
 
 ### Известные ограничения (не решено)
 

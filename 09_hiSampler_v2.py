@@ -154,7 +154,7 @@ class UI(QDialog):
         self.worker_2 = None
         self.thread_2 = None
 
-        uic.loadUi(get_path('ui/10_hiSampler_gui_v1.ui'), self)
+        uic.loadUi(get_path('ui/09_hiSampler_gui_v1.ui'), self)
 
         self.text_wait = '<FONT COLOR=#b96902>Ждите...</FONT>'
         self.text_success = '<FONT COLOR=#008000>Успешно</FONT>'
