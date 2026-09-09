@@ -62,8 +62,6 @@ def _connect(cwd_path=None, read_only=False):
         os.makedirs(os.path.join(root, 'db'), exist_ok=True)
         conn = sqlite3.connect(path, timeout=15)
     conn.execute('PRAGMA busy_timeout = 15000')
-    if not read_only:
-        conn.execute('PRAGMA journal_mode = WAL')
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -87,13 +85,16 @@ def identify_database(cwd_path=None):
         return MISSING_DATABASE
     if os.path.getsize(path) == 0:
         return EMPTY_DATABASE
+    conn = None
     try:
         conn = _connect(cwd_path, read_only=True)
         application_id = conn.execute('PRAGMA application_id').fetchone()[0]
         tables = _table_names(conn)
-        conn.close()
     except sqlite3.DatabaseError as error:
         raise DatabaseIdentityError(f'Cannot identify SQLite database {path}: {error}') from error
+    finally:
+        if conn is not None:
+            conn.close()
 
     if application_id == RETAIL_APPLICATION_ID:
         return RETAIL_PROJECT_ID
@@ -127,8 +128,10 @@ def _require_tables(cwd_path, table_names, allowed_projects):
             f'Operation is not allowed for project {project_id!r}: {path}')
 
     conn = _connect(cwd_path, read_only=True)
-    missing = set(table_names) - _table_names(conn)
-    conn.close()
+    try:
+        missing = set(table_names) - _table_names(conn)
+    finally:
+        conn.close()
     if missing:
         raise DatabaseSchemaError(
             f'Database {path} lacks required table(s): {", ".join(sorted(missing))}')
@@ -239,17 +242,20 @@ def init_db(cwd_path=None):
             f'Refusing to apply the Retail schema to project {project_id!r}: {path}')
 
     conn = _connect(cwd_path)
-    current_version = conn.execute('PRAGMA user_version').fetchone()[0]
-    if current_version > RETAIL_SCHEMA_VERSION:
+    try:
+        current_version = conn.execute('PRAGMA user_version').fetchone()[0]
+        if current_version > RETAIL_SCHEMA_VERSION:
+            raise DatabaseSchemaError(
+                f'Database schema version {current_version} is newer than supported '
+                f'version {RETAIL_SCHEMA_VERSION}: {path}')
+        if conn.execute('PRAGMA journal_mode').fetchone()[0].lower() != 'wal':
+            conn.execute('PRAGMA journal_mode = WAL')
+        conn.executescript(_CORE_SCHEMA)
+        conn.execute(f'PRAGMA application_id = {RETAIL_APPLICATION_ID}')
+        conn.execute(f'PRAGMA user_version = {RETAIL_SCHEMA_VERSION}')
+        conn.commit()
+    finally:
         conn.close()
-        raise DatabaseSchemaError(
-            f'Database schema version {current_version} is newer than supported '
-            f'version {RETAIL_SCHEMA_VERSION}: {path}')
-    conn.executescript(_CORE_SCHEMA)
-    conn.execute(f'PRAGMA application_id = {RETAIL_APPLICATION_ID}')
-    conn.execute(f'PRAGMA user_version = {RETAIL_SCHEMA_VERSION}')
-    conn.commit()
-    conn.close()
 
 
 # --- camconfig ---
