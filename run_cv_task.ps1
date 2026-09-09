@@ -4,7 +4,7 @@ param()
 $ErrorActionPreference = 'Stop'
 $projectDir = $PSScriptRoot
 $pythonExe = Join-Path $projectDir '.venv\Scripts\python.exe'
-$pipelineScript = Join-Path $projectDir 'CV_SYS_v1.py'
+$pipelineScript = Join-Path $projectDir 'CV_SYS_v2.py'
 $modelFile = Join-Path $projectDir '.venv\neural_network_models\yolov10x.pt'
 $exitCode = 1
 

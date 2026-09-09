@@ -12,7 +12,7 @@ from openpyxl import load_workbook
 
 from utils import db
 
-spec = importlib.util.spec_from_file_location('sysviscount', Path(__file__).resolve().parents[1] / '07_SysViscountEval_v1.py')
+spec = importlib.util.spec_from_file_location('sysviscount', Path(__file__).resolve().parents[1] / '07_SysViscountEval_v2.py')
 app = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(app)
 

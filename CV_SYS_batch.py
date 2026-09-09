@@ -1,7 +1,7 @@
 """Batch pipeline: process all accumulated days per shop group, then exit.
 
 Run ONCE with CV_SYS stopped (single-shot, not a daemon). After it finishes,
-start CV_SYS_v1.py for real-time operation.
+start CV_SYS_v2.py for real-time operation.
 
 Orchestration is BY DAYS inside each group (the invariant that CV_SYS's
 real-time loop does not guarantee for accumulated days):

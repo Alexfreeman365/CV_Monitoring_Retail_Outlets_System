@@ -29,7 +29,7 @@ python -m PyInstaller --onefile -w `
 --workpath "$pwd/temp/build" `
 --specpath "$pwd/temp/spec" `
 --clean --runtime-tmpdir=hi_temp `
-"$pwd/00_hiSDloader_v4.py"
+"$pwd/00_hiSDloader_v5.py"
 
 python -m PyInstaller --onefile -w `
 --exclude-module matplotlib `
@@ -71,7 +71,7 @@ python -m PyInstaller --onefile -w `
 --workpath "$pwd/temp/build" `
 --specpath "$pwd/temp/spec" `
 --clean --runtime-tmpdir=hi_temp `
-"$pwd/01_hiFTPDloader_v3.py"
+"$pwd/01_hiFTPDloader_v4.py"
 
 python -m PyInstaller --onefile -w `
 --exclude-module matplotlib `
@@ -116,7 +116,7 @@ python -m PyInstaller --onefile -w `
 --workpath "$pwd/temp/build" `
 --specpath "$pwd/temp/spec" `
 --clean --runtime-tmpdir=hi_temp `
-"$pwd/02_hiFTPCleaner_v3.py"
+"$pwd/02_hiFTPCleaner_v4.py"
 
 python -m PyInstaller --onefile -w `
 --exclude-module matplotlib `
@@ -161,7 +161,7 @@ python -m PyInstaller --onefile -w `
 --workpath "$pwd/temp/build" `
 --specpath "$pwd/temp/spec" `
 --clean --runtime-tmpdir=hi_temp `
-"$pwd/03_CVloadAntifreeze_v2.py"
+"$pwd/03_CVloadAntifreeze_v3.py"
 
 python -m PyInstaller --onefile -w `
 --exclude-module torch `
@@ -201,7 +201,7 @@ python -m PyInstaller --onefile -w `
 --workpath "$pwd/temp/build" `
 --specpath "$pwd/temp/spec" `
 --clean --runtime-tmpdir=hi_temp `
-"$pwd/04_CVdbViewer_v2.py"
+"$pwd/04_CVdbViewer_v3.py"
 
 python -m PyInstaller --onefile -w `
 --exclude-module altgraph `
@@ -250,7 +250,7 @@ python -m PyInstaller --onefile -w `
 --workpath "$pwd/temp/build" `
 --specpath "$pwd/temp/spec" `
 --clean --runtime-tmpdir=hi_temp `
-"$pwd/05_CVsetCam_v2.py"
+"$pwd/05_CVsetCam_v3.py"
 
 python -m PyInstaller --onefile -w `
 --exclude-module numpy `
@@ -302,7 +302,7 @@ python -m PyInstaller --onefile -w `
 --workpath "$pwd/temp/build" `
 --specpath "$pwd/temp/spec" `
 --clean --runtime-tmpdir=hi_temp `
-"$pwd/06_MissingPhotoFinder_v1.py"
+"$pwd/06_MissingPhotoFinder_v2.py"
 
 python -m PyInstaller --onefile -w `
 --exclude-module altgraph `
@@ -352,7 +352,7 @@ python -m PyInstaller --onefile -w `
 --workpath "$pwd/temp/build" `
 --specpath "$pwd/temp/spec" `
 --clean --runtime-tmpdir=hi_temp `
-"$pwd/07_SysViscountEval_v1.py"
+"$pwd/07_SysViscountEval_v2.py"
 
 python -m PyInstaller --onefile -w `
 --exclude-module numpy `
@@ -390,7 +390,7 @@ python -m PyInstaller --onefile -w `
 --workpath "$pwd/temp/build" `
 --specpath "$pwd/temp/spec" `
 --clean --runtime-tmpdir=hi_temp `
-"$pwd/08_CVdbUpdater_v2.py"
+"$pwd/08_CVdbUpdater_v3.py"
 
 python -m PyInstaller --onefile -w `
 --exclude-module numpy `
@@ -399,4 +399,4 @@ python -m PyInstaller --onefile -w `
 --workpath "$pwd/temp/build" `
 --specpath "$pwd/temp/spec" `
 --clean --runtime-tmpdir=hi_temp `
-"$pwd/09_hiSampler_v2.py"
+"$pwd/09_hiSampler_v3.py"
