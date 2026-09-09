@@ -473,12 +473,16 @@ def export_dashboard_csv(cwd_path=None):
 # --- evstat (wide <-> long) ---
 
 def _parse_mape(value):
+    if value is None or str(value).lower() in {'n/a', 'nan', 'inf'}:
+        return -1  # undefined (e.g. zero manual count and positive automatic count)
     if isinstance(value, str):
         return int(round(float(value.replace(',', '.')) * 100))
     return int(value)
 
 
 def _mape_to_str(mape_int):
+    if mape_int == -1:
+        return 'n/a'
     if mape_int == 0:
         return "0,0"
     if mape_int < 100 and mape_int % 10 == 0:
@@ -654,8 +658,8 @@ def visitors_exist(cam_name, cwd_path=None):
     return n > 0
 
 
-def read_real_viscount(cam_name, cwd_path=None):
-    """Return the manual count in the wide layout used by the Excel sheet."""
+def read_real_viscount(cam_name, cwd_path=None, *, preserve_missing=False):
+    """Return wide manual counts; preserve_missing lets evaluators reject incomplete days."""
     import pandas as pd
     _require_tables(cwd_path, {'real_viscount'}, _RETAIL_ONLY)
     conn = _connect(cwd_path, read_only=True)
@@ -663,7 +667,10 @@ def read_real_viscount(cam_name, cwd_path=None):
     conn.close()
     if df.empty:
         return pd.DataFrame(columns=['date', 'sum', '*'])
-    wide = df.pivot(index='date', columns='hour', values='count').fillna(0).astype(int).reset_index()
+    wide = df.pivot(index='date', columns='hour', values='count')
+    if not preserve_missing:
+        wide = wide.fillna(0).astype(int)
+    wide = wide.reset_index()
     wide.columns.name = None
     wide.columns = [str(c) for c in wide.columns]
     wide['sum'] = wide[[c for c in wide.columns if c != 'date']].sum(axis=1)

@@ -10,6 +10,7 @@ dist/
 temp/
 tests/*
 !tests/test_db_identity.py
+!tests/test_sysviscount_eval.py
 cams_media/
 db/
 db_backups/
