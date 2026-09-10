@@ -2,9 +2,9 @@
 
 ## Как это работает
 
-Задача запускает `run_cv_task.ps1` в видимом PowerShell-окне. Скрипт использует
-проектную `.venv`, задаёт корень проекта как рабочий каталог и запускает
-`CV_SYS_v2.py` без буферизации вывода.
+Задача запускает `windows_cvsys_launch/run_cvsys.ps1` в видимом
+PowerShell-окне. Скрипт определяет корень проекта как родительский каталог,
+использует проектную `.venv` и запускает `CV_SYS_v2.py` без буферизации вывода.
 
 В окне остаётся исходный компактный вывод `CV_SYS_v2.py`, без дополнительных
 сообщений о проходах по камерам. После того как по штатному выводу видно, что все
@@ -29,7 +29,7 @@
 ```powershell
 Set-Location 'D:\pjs\CV_Monitoring_Retail_Outlets_System'
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
-    -File .\install_cv_scheduled_task.ps1 -DailyAt '21:30'
+    -File .\windows_cvsys_launch\install_scheduled_task.ps1 -DailyAt '21:30'
 ```
 
 Время должно быть в 24-часовом формате `HH:mm`. Установщик намеренно не

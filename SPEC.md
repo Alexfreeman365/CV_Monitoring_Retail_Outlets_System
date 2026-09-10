@@ -193,10 +193,10 @@ Camhi IP-камеры
 
 ### Запуск через Windows 11 Task Scheduler
 
-Для ежедневного интерактивного запуска без PyCharm используются два PowerShell-скрипта в корне проекта:
+Для ежедневного интерактивного запуска без PyCharm используется комплект в каталоге `windows_cvsys_launch/`:
 
-- `run_cv_task.ps1` проверяет наличие проектного Python, `CV_SYS_v2.py` и модели, устанавливает корень проекта как текущий рабочий каталог и запускает `CV_SYS_v2.py` через `.venv/Scripts/python.exe` с небуферизованным выводом (`-u`); после завершения Python окно остаётся открытым до нажатия `Enter`;
-- `install_cv_scheduled_task.ps1 -DailyAt '<HH:mm>'` регистрирует ежедневную задачу `CV Monitoring - Main Pipeline`, запускающую launcher в обычном видимом PowerShell-окне.
+- `windows_cvsys_launch/run_cvsys.ps1` проверяет наличие проектного Python, `CV_SYS_v2.py` и модели, определяет корень проекта как родительский каталог, устанавливает его как текущий рабочий каталог и запускает `CV_SYS_v2.py` через `.venv/Scripts/python.exe` с небуферизованным выводом (`-u`); после завершения Python окно остаётся открытым до нажатия `Enter`;
+- `windows_cvsys_launch/install_scheduled_task.ps1 -DailyAt '<HH:mm>'` регистрирует ежедневную задачу `CV Monitoring - Main Pipeline`, запускающую launcher в обычном видимом PowerShell-окне.
 
 Задача создаётся с `LogonType=Interactive`, поэтому терминал виден только при активном входе пользователя Windows. Настройка `MultipleInstances=IgnoreNew` не позволяет запустить второй экземпляр pipeline, если предыдущий ещё работает; `StartWhenAvailable` разрешает отложенный старт после пропущенного времени; ограничение длительности отключено.
 
@@ -206,10 +206,10 @@ Camhi IP-камеры
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
-    -File .\install_cv_scheduled_task.ps1 -DailyAt '21:30'
+    -File .\windows_cvsys_launch\install_scheduled_task.ps1 -DailyAt '21:30'
 ```
 
-Подробная пользовательская инструкция и команды тестового запуска/удаления задачи находятся в `WINDOWS_TASK_SCHEDULER.md`.
+Подробная пользовательская инструкция и команды тестового запуска/удаления задачи находятся в `windows_cvsys_launch/README.md`.
 
 ### Пакетная обработка накопленных дней — `CV_SYS_batch.py`
 

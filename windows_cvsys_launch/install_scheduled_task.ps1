@@ -8,7 +8,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$launcher = Join-Path $PSScriptRoot 'run_cv_task.ps1'
+$projectDir = Split-Path -Parent $PSScriptRoot
+$launcher = Join-Path $PSScriptRoot 'run_cvsys.ps1'
 
 if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
     throw "Launcher was not found: $launcher"
@@ -24,7 +25,7 @@ $arguments = "-NoLogo -NoProfile -WindowStyle Normal -ExecutionPolicy Bypass -Fi
 $action = New-ScheduledTaskAction `
     -Execute 'powershell.exe' `
     -Argument $arguments `
-    -WorkingDirectory $PSScriptRoot
+    -WorkingDirectory $projectDir
 $trigger = New-ScheduledTaskTrigger -Daily -At $time
 $principal = New-ScheduledTaskPrincipal `
     -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) `
