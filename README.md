@@ -29,8 +29,8 @@ Camhi камеры | Windows 64b >= 10 | для ПК с CV RAM >= 8Gb
 - Можно использовать обычные офисные компьютеры
 
 
-[Комплект программ в файловой структуре для компьютера с Computer Vision (708 Mb)]( https://ipwificam.ru/wp-content/uploads/downloads/12_VA_PC_CV.rar)  
-[Комплект программ для компьютера-клиента системы (166 Mbyte)]( https://ipwificam.ru/wp-content/uploads/downloads/13_VA_PC_client.rar)
+[Комплект программ в файловой структуре для компьютера с Computer Vision]( https://ipwificam.ru/wp-content/uploads/downloads/12_VA_PC_CV.rar)  
+[Комплект программ для компьютера-клиента системы]( https://ipwificam.ru/wp-content/uploads/downloads/13_VA_PC_client.rar)
 
 
 **По всем вопросам пишите мне в [Telegram](https://t.me/AlekseySergeychuk)**
